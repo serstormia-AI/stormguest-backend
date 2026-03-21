@@ -13,7 +13,7 @@ const reservationsRoutes = require('./routes/reservations');
 const servicesRoutes = require('./routes/services');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
