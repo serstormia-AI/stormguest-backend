@@ -71,7 +71,16 @@ router.post('/', auth(['super_admin']), async (req, res) => {
         await client.query(
             `INSERT INTO hotels (id, name, location, phone, email, whatsapp_number, settings, active) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [hotelId, name, location, phone, email, whatsapp_number, settings, true]
+            [
+                hotelId, 
+                name, 
+                location || null, 
+                phone || null, 
+                email || null, 
+                whatsapp_number || req.body.whatsapp || null, 
+                settings, 
+                true
+            ]
         );
 
         let qrCode = null;
