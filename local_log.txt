@@ -1,0 +1,38 @@
+﻿[dotenv@17.3.1] injecting env (6) from .env -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ­ƒøá´©Å  run anywhere with `dotenvx run -- yourcommand`
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ÔÜÖ´©Å  override existing env vars with { override: true }
+ÔÅ│ Intentando conectar a la base de datos...
+­ƒÜÇ Servidor base corriendo en http://0.0.0.0:3001
+node : ÔØî Error durante la inicializaci├│n de la DB: Error: 
+getaddrinfo ENOTFOUND supabase-db-lkkwcos0cgc0sgoco4w884ow
+En línea: 1 Carácter: 1
++ node server.js 2>&1 | Out-File -FilePath local_log.txt 
+-Encoding utf8
++ ~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ÔØî Error duran 
+   ...gc0sgoco4w884ow:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    at C:\Users\gkar2\.gemini\antigravity\scratch\stormguest-
+backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections 
+(node:internal/process/task_queues:105:5)
+    at async initDb (C:\Users\gkar2\.gemini\antigravity\scrat
+ch\stormguest-backend\database.js:13:18)
+    at async start (C:\Users\gkar2\.gemini\antigravity\scratc
+h\stormguest-backend\server.js:51:9) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'supabase-db-lkkwcos0cgc0sgoco4w884ow'
+}
+Error: getaddrinfo ENOTFOUND 
+supabase-db-lkkwcos0cgc0sgoco4w884ow
+    at C:\Users\gkar2\.gemini\antigravity\scratch\stormguest-
+backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections 
+(node:internal/process/task_queues:105:5)
+    at async initDb (C:\Users\gkar2\.gemini\antigravity\scrat
+ch\stormguest-backend\database.js:13:18)
+    at async start (C:\Users\gkar2\.gemini\antigravity\scratc
+h\stormguest-backend\server.js:51:9)

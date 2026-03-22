@@ -30,7 +30,7 @@ router.post('/login', async (req, res) => {
 
             const token = jwt.sign(
                 { email, role: user.role, hotel_id: user.hotel_id, name: user.name },
-                process.env.JWT_SECRET || 'secret',
+                process.env.JWT_SECRET || 'stormguest_secret_123',
                 { expiresIn: '24h' }
             );
 
