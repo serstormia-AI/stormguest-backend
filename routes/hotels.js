@@ -44,6 +44,7 @@ router.get('/:id', auth(['super_admin', 'hotel_manager']), async (req, res) => {
 });
 
 router.post('/', auth(['super_admin']), async (req, res) => {
+    console.log('--- NUEVA PETICIÓN: CREACIÓN DE HOTEL ---');
     const client = await pool.connect();
     try {
         const { 
@@ -52,9 +53,10 @@ router.post('/', auth(['super_admin']), async (req, res) => {
             upsell_prices 
         } = req.body;
 
+        console.log(`[1/5] Recibidos datos para hotel: ${name}`);
+
         if (!name) return res.status(400).json({ error: 'El nombre del hotel es requerido' });
 
-        // Build settings object
         const settings = {
             plan,
             provider,
@@ -63,10 +65,11 @@ router.post('/', auth(['super_admin']), async (req, res) => {
             upsell_prices: upsell_prices || {}
         };
 
-        const hotelId = 'h_' + crypto.randomBytes(6).toString('hex');
+        const hotelId = 'h_' + crypto.randomBytes(4).toString('hex');
         const instanceName = `stormguest-${hotelId}`;
 
-        // Insert into DB
+        console.log(`[2/5] Generando ID: ${hotelId} e instancia: ${instanceName}`);
+
         await client.query('BEGIN');
         await client.query(
             `INSERT INTO hotels (id, name, location, phone, email, whatsapp_number, settings, active) 
@@ -82,38 +85,46 @@ router.post('/', auth(['super_admin']), async (req, res) => {
                 true
             ]
         );
+        console.log(`[3/5] Datos insertados en tabla 'hotels' (pendiente COMMIT)`);
 
         let qrCode = null;
 
-        // Automatically create Evolution instance if provider is evolution
         if (provider === 'evolution' && evolution_url && evolution_apikey) {
+            console.log(`[4/5] Intentando conectar con Evolution API en: ${evolution_url}`);
             try {
+                // Añadimos un pequeño timeout interno de 15s para no colgar el request
                 const evoData = await createEvolutionInstance(instanceName, evolution_url, evolution_apikey);
                 qrCode = evoData.qr;
                 
-                // Update settings with instanceName
                 settings.evolution_instance = evoData.instanceName;
                 await client.query('UPDATE hotels SET settings = $1 WHERE id = $2', [settings, hotelId]);
+                console.log(`[4.1/5] Instancia Evolution creada con éxito.`);
             } catch (err) {
-                console.error("No se pudo crear la instancia de Evolution:", err);
-                // We don't rollback the hotel creation, just return a warning to the frontend
+                console.error("[!] Error en Paso 4 (Evolution):", err.message);
+                // No revertimos el hotel, solo avisamos
             }
+        } else {
+            console.log(`[4/5] Saltando Evolution (Modo ${provider || 'mock'})`);
         }
 
         await client.query('COMMIT');
+        console.log(`[5/5] Transacción completada con éxito. Enviando respuesta.`);
 
         res.status(201).json({
-            message: 'Hotel creado y configurado correctamente.',
+            message: 'Hotel creado correctamente.',
             hotel_id: hotelId,
             qr_code: qrCode
         });
 
     } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Error creating hotel:', error);
-        res.status(500).json({ error: 'Error interno al crear el hotel', details: error.message, stack: error.stack });
+        if (client) await client.query('ROLLBACK');
+        console.error('❌ ERROR FATAL AL CREAR HOTEL:', error);
+        res.status(500).json({ 
+            error: 'Error interno al crear el hotel', 
+            details: error.message 
+        });
     } finally {
-        client.release();
+        if (client) client.release();
     }
 });
 

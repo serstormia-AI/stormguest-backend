@@ -12,7 +12,8 @@ async function createEvolutionInstance(instanceName, evolutionUrl, globalApiKey)
             webhook: process.env.WEBHOOK_URL || "https://api.serstormia.cloud/webhook/evolution",
             webhook_events: ["APPLICATION_STARTUP", "QRCODE_UPDATED", "MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE"]
         }, {
-            headers: { 'apikey': globalApiKey, 'Content-Type': 'application/json' }
+            headers: { 'apikey': globalApiKey, 'Content-Type': 'application/json' },
+            timeout: 15000 // 15 segundos de timeout
         });
 
         return {
