@@ -111,7 +111,7 @@ router.post('/', auth(['super_admin']), async (req, res) => {
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error creating hotel:', error);
-        res.status(500).json({ error: 'Error interno al crear el hotel' });
+        res.status(500).json({ error: 'Error interno al crear el hotel', details: error.message, stack: error.stack });
     } finally {
         client.release();
     }
