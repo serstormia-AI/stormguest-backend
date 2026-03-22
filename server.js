@@ -26,42 +26,7 @@ app.use('/api/guests', guestsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/reservations', reservationsRoutes);
 app.use('/api/services', servicesRoutes);
-app.use('/webhook', webhookRoutes); // As defined in the README_1.md: POST /webhook
-
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const { initDb } = require('./database');
-
-// Import routes
-const webhookRoutes = require('./routes/webhook');
-const authRoutes = require('./routes/auth');
-const hotelsRoutes = require('./routes/hotels');
-const guestsRoutes = require('./routes/guests');
-const analyticsRoutes = require('./routes/analytics');
-const reservationsRoutes = require('./routes/reservations');
-const servicesRoutes = require('./routes/services');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/hotels', hotelsRoutes);
-app.use('/api/guests', guestsRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/reservations', reservationsRoutes);
-app.use('/api/services', servicesRoutes);
-app.use('/webhook', webhookRoutes); // As defined in the README_1.md: POST /webhook
-
-// Health Check
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+app.use('/webhook', webhookRoutes);
 
 // Start Server
 async function start() {
@@ -76,7 +41,7 @@ async function start() {
     });
 
     // Iniciar servidor primario
-    const server = app.listen(PORT, '0.0.0.0', () => {
+    app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Servidor base corriendo en http://0.0.0.0:${PORT}`);
     });
 
@@ -93,7 +58,7 @@ async function start() {
     } catch (error) {
         console.error('❌ Error durante la inicialización de la DB:', error);
         if (error.stack) console.error(error.stack);
-        // No matamos el proceso para que los logs sean visibles en la pestaña Terminal
+        // No matamos el proceso para que los logs sean visibles
     }
 }
 
