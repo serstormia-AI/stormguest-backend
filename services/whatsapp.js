@@ -1,6 +1,31 @@
 require('dotenv').config();
 const axios = require('axios');
 
+async function createEvolutionInstance(instanceName, evolutionUrl, globalApiKey) {
+    if (!evolutionUrl || !globalApiKey) throw new Error('Evolution API URL and Global API Key required');
+    
+    try {
+        const response = await axios.post(`${evolutionUrl}/instance/create`, {
+            instanceName,
+            qrcode: true,
+            integration: "WHATSAPP-BAILEYS",
+            webhook: process.env.WEBHOOK_URL || "https://api.serstormia.cloud/webhook/evolution",
+            webhook_events: ["APPLICATION_STARTUP", "QRCODE_UPDATED", "MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE"]
+        }, {
+            headers: { 'apikey': globalApiKey, 'Content-Type': 'application/json' }
+        });
+
+        return {
+            instanceName: response.data.instance?.instanceName || instanceName,
+            hash: response.data.hash,
+            qr: response.data.qrcode?.base64
+        };
+    } catch (error) {
+        console.error('Error creating Evolution instance:', error.response?.data || error.message);
+        throw new Error('Failed to create WhatsApp instance in Evolution');
+    }
+}
+
 const PROVIDER = process.env.WHATSAPP_PROVIDER || 'mock';
 
 // ============================================================
@@ -86,17 +111,8 @@ async function sendMessage(to, text, token) {
 
     if (PROVIDER === 'evolution') {
         try {
-            const baseUrl = process.env.EVOLUTION_URL;
-            const apiKey = process.env.EVOLUTION_API_KEY;
-            const instance = process.env.EVOLUTION_INSTANCE;
-            
-            await axios.post(`${baseUrl}/message/sendText/${instance}`, {
-                number: to,
-                text: text,
-                linkPreview: false
-            }, {
-                headers: { 'apikey': apiKey }
-            });
+            const instance = process.env.EVOLUTION_INSTANCE; // Assuming a default instance for sending
+            await evolutionService.sendMessage(to, text, instance);
             return { success: true };
         } catch (error) {
             console.error('Error enviando mensaje via Evolution:', error.response?.data || error.message);
@@ -128,5 +144,6 @@ module.exports = {
     verifyWebhook,
     parseIncomingMessage,
     sendMessage,
-    downloadMedia
+    downloadMedia,
+    createEvolutionInstance
 };
