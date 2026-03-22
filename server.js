@@ -43,11 +43,19 @@ async function start() {
         const { startSchedulers } = require('./services/scheduler');
         startSchedulers();
 
-        app.listen(PORT, () => {
-            console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+        // Rutas iniciales
+        app.get('/health', (req, res) => {
+            console.log('🏥 Health check requested');
+            res.json({ status: 'ok', timestamp: new Date() });
+        });
+
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 Servidor corriendo en http://0.0.0.0:${PORT}`);
         });
     } catch (error) {
         console.error('❌ Error fatal al iniciar servidor:', error);
+        // Mostrar más detalles del error si es posible
+        if (error.stack) console.error(error.stack);
         process.exit(1);
     }
 }
