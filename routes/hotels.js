@@ -47,21 +47,26 @@ router.post('/', auth(['super_admin']), async (req, res) => {
     console.log('--- NUEVA PETICIÓN: CREACIÓN DE HOTEL ---');
     const client = await pool.connect();
     try {
-        const { 
-            name, location, phone, email, whatsapp_number, 
-            plan, provider, evolution_url, evolution_apikey, 
-            upsell_prices 
+        const {
+            name, location, phone, email, whatsapp_number,
+            plan, provider, evolution_url, evolution_apikey,
+            upsell_prices
         } = req.body;
 
         console.log(`[1/5] Recibidos datos para hotel: ${name}`);
 
         if (!name) return res.status(400).json({ error: 'El nombre del hotel es requerido' });
 
+        // Usar valores del request, o defaults de env vars si no vienen
+        const evo_url = evolution_url || process.env.EVOLUTION_URL;
+        const evo_key = evolution_apikey || process.env.EVOLUTION_API_KEY;
+        const evo_provider = provider || process.env.WHATSAPP_PROVIDER || 'mock';
+
         const settings = {
             plan,
-            provider,
-            evolution_url,
-            evolution_apikey,
+            provider: evo_provider,
+            evolution_url: evo_url,
+            evolution_apikey: evo_key,
             upsell_prices: upsell_prices || {}
         };
 
@@ -72,16 +77,16 @@ router.post('/', auth(['super_admin']), async (req, res) => {
 
         await client.query('BEGIN');
         await client.query(
-            `INSERT INTO hotels (id, name, location, phone, email, whatsapp_number, settings, active) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            `INSERT INTO hotels (id, name, location, phone, email, whatsapp_number, settings, active)
+             VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
             [
-                hotelId, 
-                name, 
-                location || null, 
-                phone || null, 
-                email || null, 
-                whatsapp_number || req.body.whatsapp || null, 
-                settings, 
+                hotelId,
+                name,
+                location || null,
+                phone || null,
+                email || null,
+                whatsapp_number || req.body.whatsapp || null,
+                JSON.stringify(settings),
                 true
             ]
         );
@@ -89,15 +94,16 @@ router.post('/', auth(['super_admin']), async (req, res) => {
 
         let qrCode = null;
 
-        if (provider === 'evolution' && evolution_url && evolution_apikey) {
-            console.log(`[4/5] Intentando conectar con Evolution API en: ${evolution_url}`);
+        if (evo_provider === 'evolution' && evo_url && evo_key) {
+            console.log(`[4/5] Intentando conectar con Evolution API en: ${evo_url}`);
             try {
                 // Añadimos un pequeño timeout interno de 15s para no colgar el request
-                const evoData = await createEvolutionInstance(instanceName, evolution_url, evolution_apikey);
+                const evoData = await createEvolutionInstance(instanceName, evo_url, evo_key);
                 qrCode = evoData.qr;
                 
                 settings.evolution_instance = evoData.instanceName;
-                await client.query('UPDATE hotels SET settings = $1 WHERE id = $2', [settings, hotelId]);
+                settings.evolution_hash = evoData.hash;
+                await client.query('UPDATE hotels SET settings = $1::jsonb WHERE id = $2', [JSON.stringify(settings), hotelId]);
                 console.log(`[4.1/5] Instancia Evolution creada con éxito.`);
             } catch (err) {
                 console.error("[!] Error en Paso 4 (Evolution):", err.message);

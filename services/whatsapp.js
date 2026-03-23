@@ -112,8 +112,23 @@ async function sendMessage(to, text, token) {
 
     if (PROVIDER === 'evolution') {
         try {
-            const instance = process.env.EVOLUTION_INSTANCE; // Assuming a default instance for sending
-            await evolutionService.sendMessage(to, text, instance);
+            const evolutionUrl = process.env.EVOLUTION_URL;
+            const evolutionApiKey = process.env.EVOLUTION_API_KEY;
+            const instance = process.env.EVOLUTION_INSTANCE || token;
+
+            if (!evolutionUrl || !evolutionApiKey || !instance) {
+                console.error('❌ Evolution API: Faltan variables de entorno (EVOLUTION_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE)');
+                return { success: false, error: 'Missing Evolution env vars' };
+            }
+
+            await axios.post(
+                `${evolutionUrl}/message/sendText/${instance}`,
+                { number: to, text },
+                {
+                    headers: { 'apikey': evolutionApiKey, 'Content-Type': 'application/json' },
+                    timeout: 10000
+                }
+            );
             return { success: true };
         } catch (error) {
             console.error('Error enviando mensaje via Evolution:', error.response?.data || error.message);
