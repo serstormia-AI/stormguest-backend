@@ -17,6 +17,56 @@ router.get('/', auth(['super_admin']), async (req, res) => {
     }
 });
 
+// Obtener QR code en HTML (SIN autenticación para testing)
+router.get('/:id/qr', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { rows } = await pool.query('SELECT name, settings FROM hotels WHERE id = $1', [id]);
+
+        if (rows.length === 0) {
+            return res.status(404).send('<h1>Hotel no encontrado</h1>');
+        }
+
+        const hotel = rows[0];
+        const qrBase64 = hotel.settings?.qr_code;
+
+        if (!qrBase64) {
+            return res.status(404).send(`
+                <h1>${hotel.name}</h1>
+                <p>❌ QR code no disponible. El hotel puede no estar conectado a WhatsApp.</p>
+            `);
+        }
+
+        // Devolver HTML con la imagen del QR code
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>QR Code - ${hotel.name}</title>
+                <style>
+                    body { font-family: Arial; text-align: center; padding: 20px; }
+                    h1 { color: #333; }
+                    img { max-width: 400px; border: 2px solid #ddd; border-radius: 8px; }
+                    .info { margin-top: 20px; color: #666; }
+                </style>
+            </head>
+            <body>
+                <h1>🏨 ${hotel.name}</h1>
+                <p>Escanea este código QR con WhatsApp:</p>
+                <img src="${qrBase64}" alt="QR Code">
+                <div class="info">
+                    <p>ID: ${id}</p>
+                    <p>Creado: ${new Date().toLocaleString()}</p>
+                </div>
+            </body>
+            </html>
+        `);
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('<h1>Error interno</h1>');
+    }
+});
+
 router.get('/:id', auth(['super_admin', 'hotel_manager']), async (req, res) => {
     try {
         const { id } = req.params;
