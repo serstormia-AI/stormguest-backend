@@ -17,7 +17,7 @@ router.get('/', auth(['super_admin']), async (req, res) => {
     }
 });
 
-// Obtener QR code en HTML (SIN autenticación)
+// Obtener QR code en HTML (SIN autenticación) - siempre fresco desde Evolution API
 router.get('/:id/qr', async (req, res) => {
     try {
         const { id } = req.params;
@@ -29,36 +29,72 @@ router.get('/:id/qr', async (req, res) => {
 
         const hotel = rows[0];
         const settings = hotel.settings || {};
+        const instance = settings.evolution_instance;
 
-        // Intentar obtener QR guardado en DB primero
-        let qrBase64 = settings.qr_code;
+        let qrBase64 = null;
+        let statusMsg = '';
+        let isConnected = false;
 
-        // Si no está en DB, pedirlo directo a Evolution API
-        if (!qrBase64 && settings.evolution_instance) {
+        if (instance) {
             try {
                 const evoUrl = settings.evolution_url || process.env.EVOLUTION_URL;
                 const evoKey = settings.evolution_apikey || process.env.EVOLUTION_API_KEY;
-                const instance = settings.evolution_instance;
-
                 const axios = require('axios');
+
+                // Siempre pedir QR fresco a Evolution API
                 const evoRes = await axios.get(`${evoUrl}/instance/connect/${instance}`, {
                     headers: { 'apikey': evoKey },
                     timeout: 10000
                 });
 
-                qrBase64 = evoRes.data?.base64 || evoRes.data?.qrcode?.base64;
+                const data = evoRes.data;
+
+                if (data?.base64) {
+                    qrBase64 = data.base64;
+                } else if (data?.qrcode?.base64) {
+                    qrBase64 = data.qrcode.base64;
+                } else if (data?.instance?.state === 'open' || data?.state === 'open') {
+                    isConnected = true;
+                    statusMsg = '✅ WhatsApp conectado correctamente';
+                }
             } catch (evoErr) {
                 console.error('Error obteniendo QR de Evolution:', evoErr.message);
+                statusMsg = 'Error conectando con Evolution API';
             }
+        } else {
+            statusMsg = 'No hay instancia WhatsApp configurada para este hotel';
+        }
+
+        if (isConnected) {
+            return res.send(`
+                <!DOCTYPE html><html>
+                <head><title>WhatsApp - ${hotel.name}</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <style>body{font-family:Arial;text-align:center;padding:40px;background:#f5f5f5}
+                .card{background:white;border-radius:12px;padding:30px;display:inline-block;box-shadow:0 2px 12px rgba(0,0,0,.1)}
+                h2{color:#1a1a2e}.status{font-size:1.2em;color:#25d366;margin:20px 0}</style></head>
+                <body><div class="card">
+                <h2>🏨 ${hotel.name}</h2>
+                <p class="status">${statusMsg}</p>
+                <p><small>Hotel ID: ${id}</small></p>
+                </div></body></html>
+            `);
         }
 
         if (!qrBase64) {
             return res.send(`
-                <!DOCTYPE html><html><body style="font-family:Arial;text-align:center;padding:40px">
+                <!DOCTYPE html><html>
+                <head><title>QR - ${hotel.name}</title>
+                <meta http-equiv="refresh" content="10">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <style>body{font-family:Arial;text-align:center;padding:40px;background:#f5f5f5}
+                .card{background:white;border-radius:12px;padding:30px;display:inline-block;box-shadow:0 2px 12px rgba(0,0,0,.1)}</style></head>
+                <body><div class="card">
                 <h2>🏨 ${hotel.name}</h2>
-                <p>⚠️ QR no disponible. La instancia puede estar conectada o expiró.</p>
-                <p>Instance: ${settings.evolution_instance || 'no configurada'}</p>
-                </body></html>
+                <p>⚠️ ${statusMsg || 'QR no disponible'}</p>
+                <p><small>Instance: ${instance || 'no configurada'}</small></p>
+                <p><small>Refrescando en 10 segundos...</small></p>
+                </div></body></html>
             `);
         }
 
@@ -67,6 +103,7 @@ router.get('/:id/qr', async (req, res) => {
             <html>
             <head>
                 <title>QR - ${hotel.name}</title>
+                <meta http-equiv="refresh" content="20">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <style>
                     body { font-family: Arial; text-align: center; padding: 20px; background: #f5f5f5; }
@@ -74,6 +111,7 @@ router.get('/:id/qr', async (req, res) => {
                     img { max-width: 320px; width: 100%; }
                     h2 { color: #1a1a2e; margin-bottom: 8px; }
                     p { color: #666; margin: 8px 0; }
+                    .timer { font-size: 0.8em; color: #999; }
                 </style>
             </head>
             <body>
@@ -82,6 +120,7 @@ router.get('/:id/qr', async (req, res) => {
                     <p>Escanea con WhatsApp para conectar</p>
                     <img src="${qrBase64}" alt="QR Code WhatsApp">
                     <p><small>Hotel ID: ${id}</small></p>
+                    <p class="timer">⏱ QR se renueva automáticamente cada 20 segundos</p>
                 </div>
             </body>
             </html>
