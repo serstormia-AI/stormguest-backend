@@ -9,12 +9,8 @@ const router = express.Router();
 
 router.get('/', auth(['super_admin']), async (req, res) => {
     try {
-        // Return mock hotels for now until real DB population tool is ready
-        const MOCK_HOTELS = [
-            { id: "h1", name: "Hotel Interamericano", location: "Bariloche, Argentina", plan: "Pro", status: "active", guests: 1247, revenue_month: 4820, conversations_today: 34, whatsapp: "+5492944123456", created: "2024-01-15", bot_active: true, modules: ["reservas", "huespedes", "automatizacion", "marketing"] },
-            { id: "h2", name: "Llao Llao Resort", location: "Bariloche, Argentina", plan: "Pro", status: "active", guests: 3841, revenue_month: 12340, conversations_today: 89, whatsapp: "+5492944987654", created: "2024-02-01", bot_active: true, modules: ["reservas", "huespedes", "automatizacion", "marketing"] }
-        ];
-        res.json(MOCK_HOTELS);
+        const { rows } = await pool.query('SELECT * FROM hotels ORDER BY created_at DESC');
+        res.json(rows);
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno' });
