@@ -5,45 +5,48 @@ async function createEvolutionInstance(instanceName, evolutionUrl, globalApiKey)
     if (!evolutionUrl || !globalApiKey) throw new Error('Evolution API URL and Global API Key required');
 
     try {
-        // ESTRATEGIA: Probar con parámetros mínimos primero
-        // Si "integration" causa el error, lo quitamos
-        // Si "webhook" causa el error, lo quitamos
-        // Documentado: Evolution API v2 espera parámetros específicos
+        // ✅ Parámetros CORRECTOS (testeados en Fase 2 - Status 201)
+        // - instanceName (requerido)
+        // - qrcode: true (para generar código QR)
+        // - integration: "WHATSAPP-BAILEYS" (requerido por Evolution API)
+        // NO necesitamos: webhook ni webhook_events
 
         const payload = {
             instanceName,
-            qrcode: true
-            // Temporal: remover integration y webhook para diagnosticar
-            // integration: "WHATSAPP-BAILEYS",
-            // webhook: process.env.WEBHOOK_URL || "https://api.serstormia.cloud/webhook/evolution"
+            qrcode: true,
+            integration: "WHATSAPP-BAILEYS"
         };
 
-        console.log(`\n[🔧 Evolution API Debug]`);
-        console.log(`   Endpoint: POST ${evolutionUrl}/instance/create`);
-        console.log(`   Payload:`, JSON.stringify(payload, null, 2));
+        console.log(`\n[🚀 Evolution API - Creating Instance]`);
+        console.log(`   Instance: ${instanceName}`);
 
         const response = await axios.post(`${evolutionUrl}/instance/create`, payload, {
             headers: { 'apikey': globalApiKey, 'Content-Type': 'application/json' },
             timeout: 15000
         });
 
-        console.log(`\n[✅ Evolution API Success]`);
-        console.log(`   Response:`, JSON.stringify(response.data, null, 2));
+        console.log(`[✅ Instance Created Successfully]`);
+        console.log(`   ID: ${response.data.instance?.instanceId}`);
+        console.log(`   Hash: ${response.data.hash}`);
+        console.log(`   Status: ${response.data.instance?.status}`);
 
         return {
             instanceName: response.data.instance?.instanceName || instanceName,
+            instanceId: response.data.instance?.instanceId,
             hash: response.data.hash,
-            qr: response.data.qrcode?.base64
+            qrCodeBase64: response.data.qrcode?.base64,
+            qrCodeText: response.data.qrcode?.code,
+            status: response.data.instance?.status
         };
     } catch (error) {
         console.error('\n[❌ Evolution API Error]');
         console.error(`   Status: ${error.response?.status}`);
         console.error(`   Message: ${error.message}`);
-        if (error.response?.data) {
-            console.error(`   Response:`, JSON.stringify(error.response.data, null, 2));
+        if (error.response?.data?.response?.message) {
+            console.error(`   Evolution says:`, error.response.data.response.message);
         }
 
-        throw new Error(`Evolution API Error (${error.response?.status}): ${error.response?.data?.response?.message?.[0] || error.message}`);
+        throw new Error(`Failed to create WhatsApp instance: ${error.response?.data?.response?.message?.[0] || error.message}`);
     }
 }
 

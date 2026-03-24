@@ -93,17 +93,23 @@ router.post('/', auth(['super_admin']), async (req, res) => {
         if (evo_provider === 'evolution' && evo_url && evo_key) {
             console.log(`[4/5] Intentando conectar con Evolution API en: ${evo_url}`);
             try {
-                // Añadimos un pequeño timeout interno de 15s para no colgar el request
+                // Crear instancia en Evolution API
                 const evoData = await createEvolutionInstance(instanceName, evo_url, evo_key);
-                qrCode = evoData.qr;
-                
+                qrCode = evoData.qrCodeBase64;  // ← Imagen QR para mostrar en frontend
+
+                // Guardar datos de Evolution en settings
                 settings.evolution_instance = evoData.instanceName;
+                settings.evolution_instance_id = evoData.instanceId;
                 settings.evolution_hash = evoData.hash;
+                settings.evolution_status = evoData.status;
+
                 await client.query('UPDATE hotels SET settings = $1::jsonb WHERE id = $2', [JSON.stringify(settings), hotelId]);
                 console.log(`[4.1/5] Instancia Evolution creada con éxito.`);
+                console.log(`        → QR Code generado para escanear`);
             } catch (err) {
                 console.error("[!] Error en Paso 4 (Evolution):", err.message);
-                // No revertimos el hotel, solo avisamos
+                // No revertimos el hotel, solo avisamos que no se pudo crear la instancia WhatsApp
+                console.error("[!] El hotel fue creado pero sin integración WhatsApp (aún se puede hacer luego)");
             }
         } else {
             console.log(`[4/5] Saltando Evolution (Modo ${provider || 'mock'})`);
