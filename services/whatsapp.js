@@ -3,18 +3,25 @@ const axios = require('axios');
 
 async function createEvolutionInstance(instanceName, evolutionUrl, globalApiKey) {
     if (!evolutionUrl || !globalApiKey) throw new Error('Evolution API URL and Global API Key required');
-    
+
     try {
-        const response = await axios.post(`${evolutionUrl}/instance/create`, {
+        // Intentar primero con parámetros mínimos para diagnosticar el error
+        const payload = {
             instanceName,
             qrcode: true,
             integration: "WHATSAPP-BAILEYS",
-            webhook: process.env.WEBHOOK_URL || "https://api.serstormia.cloud/webhook/evolution",
-            webhook_events: ["APPLICATION_STARTUP", "QRCODE_UPDATED", "MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE"]
-        }, {
+            webhook: process.env.WEBHOOK_URL || "https://api.serstormia.cloud/webhook/evolution"
+        };
+
+        console.log(`[Evolution Debug] URL: ${evolutionUrl}/instance/create`);
+        console.log(`[Evolution Debug] Payload:`, JSON.stringify(payload, null, 2));
+
+        const response = await axios.post(`${evolutionUrl}/instance/create`, payload, {
             headers: { 'apikey': globalApiKey, 'Content-Type': 'application/json' },
-            timeout: 15000 // 15 segundos de timeout
+            timeout: 15000
         });
+
+        console.log(`[Evolution Success] Response:`, JSON.stringify(response.data, null, 2));
 
         return {
             instanceName: response.data.instance?.instanceName || instanceName,
@@ -22,7 +29,16 @@ async function createEvolutionInstance(instanceName, evolutionUrl, globalApiKey)
             qr: response.data.qrcode?.base64
         };
     } catch (error) {
-        console.error('Error creating Evolution instance:', error.response?.data || error.message);
+        console.error('❌ Error creating Evolution instance:');
+        console.error('   Status:', error.response?.status);
+        console.error('   Data:', JSON.stringify(error.response?.data, null, 2));
+        console.error('   Message:', error.message);
+
+        // Si la respuesta muestra el parámetro problemático, log más detallado
+        if (error.response?.data?.response?.message) {
+            console.error('   Evolution Error:', error.response.data.response.message);
+        }
+
         throw new Error('Failed to create WhatsApp instance in Evolution');
     }
 }
