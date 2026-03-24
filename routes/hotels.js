@@ -17,7 +17,7 @@ router.get('/', auth(['super_admin']), async (req, res) => {
     }
 });
 
-// Obtener QR code en HTML (SIN autenticación para testing)
+// Obtener QR code en HTML (SIN autenticación)
 router.get('/:id/qr', async (req, res) => {
     try {
         const { id } = req.params;
@@ -28,42 +28,67 @@ router.get('/:id/qr', async (req, res) => {
         }
 
         const hotel = rows[0];
-        const qrBase64 = hotel.settings?.qr_code;
+        const settings = hotel.settings || {};
+
+        // Intentar obtener QR guardado en DB primero
+        let qrBase64 = settings.qr_code;
+
+        // Si no está en DB, pedirlo directo a Evolution API
+        if (!qrBase64 && settings.evolution_instance) {
+            try {
+                const evoUrl = settings.evolution_url || process.env.EVOLUTION_URL;
+                const evoKey = settings.evolution_apikey || process.env.EVOLUTION_API_KEY;
+                const instance = settings.evolution_instance;
+
+                const axios = require('axios');
+                const evoRes = await axios.get(`${evoUrl}/instance/connect/${instance}`, {
+                    headers: { 'apikey': evoKey },
+                    timeout: 10000
+                });
+
+                qrBase64 = evoRes.data?.base64 || evoRes.data?.qrcode?.base64;
+            } catch (evoErr) {
+                console.error('Error obteniendo QR de Evolution:', evoErr.message);
+            }
+        }
 
         if (!qrBase64) {
-            return res.status(404).send(`
-                <h1>${hotel.name}</h1>
-                <p>❌ QR code no disponible. El hotel puede no estar conectado a WhatsApp.</p>
+            return res.send(`
+                <!DOCTYPE html><html><body style="font-family:Arial;text-align:center;padding:40px">
+                <h2>🏨 ${hotel.name}</h2>
+                <p>⚠️ QR no disponible. La instancia puede estar conectada o expiró.</p>
+                <p>Instance: ${settings.evolution_instance || 'no configurada'}</p>
+                </body></html>
             `);
         }
 
-        // Devolver HTML con la imagen del QR code
         res.send(`
             <!DOCTYPE html>
             <html>
             <head>
-                <title>QR Code - ${hotel.name}</title>
+                <title>QR - ${hotel.name}</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
                 <style>
-                    body { font-family: Arial; text-align: center; padding: 20px; }
-                    h1 { color: #333; }
-                    img { max-width: 400px; border: 2px solid #ddd; border-radius: 8px; }
-                    .info { margin-top: 20px; color: #666; }
+                    body { font-family: Arial; text-align: center; padding: 20px; background: #f5f5f5; }
+                    .card { background: white; border-radius: 12px; padding: 30px; display: inline-block; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+                    img { max-width: 320px; width: 100%; }
+                    h2 { color: #1a1a2e; margin-bottom: 8px; }
+                    p { color: #666; margin: 8px 0; }
                 </style>
             </head>
             <body>
-                <h1>🏨 ${hotel.name}</h1>
-                <p>Escanea este código QR con WhatsApp:</p>
-                <img src="${qrBase64}" alt="QR Code">
-                <div class="info">
-                    <p>ID: ${id}</p>
-                    <p>Creado: ${new Date().toLocaleString()}</p>
+                <div class="card">
+                    <h2>🏨 ${hotel.name}</h2>
+                    <p>Escanea con WhatsApp para conectar</p>
+                    <img src="${qrBase64}" alt="QR Code WhatsApp">
+                    <p><small>Hotel ID: ${id}</small></p>
                 </div>
             </body>
             </html>
         `);
     } catch (error) {
-        console.error(error);
-        res.status(500).send('<h1>Error interno</h1>');
+        console.error('Error en /qr:', error);
+        res.status(500).send(`<h1>Error: ${error.message}</h1>`);
     }
 });
 
