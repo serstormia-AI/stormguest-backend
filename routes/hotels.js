@@ -108,6 +108,8 @@ router.post('/', auth(['super_admin']), async (req, res) => {
                 settings.evolution_instance_id = evoData.instanceId;
                 settings.evolution_hash = evoData.hash;
                 settings.evolution_status = evoData.status;
+                settings.qr_code = evoData.qrCodeBase64;  // ← Guardar QR code en DB
+                settings.qr_code_text = evoData.qrCodeText;
 
                 await client.query('UPDATE hotels SET settings = $1::jsonb WHERE id = $2', [JSON.stringify(settings), hotelId]);
                 console.log(`[4.1/5] Instancia Evolution creada con éxito.`);
