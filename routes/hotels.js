@@ -41,7 +41,7 @@ router.get('/:id', auth(['super_admin', 'hotel_manager']), async (req, res) => {
 
 router.post('/', auth(['super_admin']), async (req, res) => {
     console.log('--- NUEVA PETICIÓN: CREACIÓN DE HOTEL ---');
-    const client = await pool.connect();
+    let client;
     try {
         const {
             name, location, phone, email, whatsapp_number,
@@ -72,7 +72,12 @@ router.post('/', auth(['super_admin']), async (req, res) => {
 
         console.log(`[2/5] Generando ID: ${hotelId} e instancia: ${instanceName}`);
 
+        client = await pool.connect();
+        console.log(`[2.1/5] Conectado a base de datos`);
+
         await client.query('BEGIN');
+        console.log(`[2.2/5] Transacción iniciada`);
+
         await client.query(
             `INSERT INTO hotels (id, name, location, phone, email, whatsapp_number, settings, active)
              VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
