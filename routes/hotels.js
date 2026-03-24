@@ -56,7 +56,8 @@ router.post('/', auth(['super_admin']), async (req, res) => {
         // Usar valores del request, o defaults de env vars si no vienen
         const evo_url = evolution_url || process.env.EVOLUTION_URL;
         const evo_key = evolution_apikey || process.env.EVOLUTION_API_KEY;
-        const evo_provider = provider || process.env.WHATSAPP_PROVIDER || 'mock';
+        // Por defecto, no auto-crear Evolution instance (puede ser conectado luego via API)
+        const evo_provider = provider || 'mock';
 
         const settings = {
             plan,
@@ -108,11 +109,14 @@ router.post('/', auth(['super_admin']), async (req, res) => {
                 console.log(`        → QR Code generado para escanear`);
             } catch (err) {
                 console.error("[!] Error en Paso 4 (Evolution):", err.message);
+                console.error("[!] Stack trace:", err.stack);
                 // No revertimos el hotel, solo avisamos que no se pudo crear la instancia WhatsApp
-                console.error("[!] El hotel fue creado pero sin integración WhatsApp (aún se puede hacer luego)");
+                console.warn("[⚠️] El hotel fue creado pero sin integración WhatsApp (se puede conectar luego)");
+                // El hotel se crea de todas formas, sin QR code por ahora
+                qrCode = null;
             }
         } else {
-            console.log(`[4/5] Saltando Evolution (Modo ${provider || 'mock'})`);
+            console.log(`[4/5] Saltando Evolution (Modo ${evo_provider})`);
         }
 
         await client.query('COMMIT');
