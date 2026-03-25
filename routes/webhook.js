@@ -41,7 +41,7 @@ router.post('/', async (req, res) => {
 
 async function processIncomingMessage(parsed) {
   const { from, to, name, content, mediaUrl, mediaType, messageId } = parsed;
-  
+
   // 1. Verificar si ya procesamos este mensaje (deduplicación)
   const { rows: existing } = await pool.query(
     `SELECT id FROM messages WHERE whatsapp_message_id = $1`,
@@ -52,17 +52,17 @@ async function processIncomingMessage(parsed) {
     return;
   }
 
-  // 2. Encontrar el hotel por número de WhatsApp
+  // 2. Encontrar el hotel por instancia Evolution (el 'to' es el instance name desde Evolution)
   const { rows: hotels } = await pool.query(
-    `SELECT * FROM hotels WHERE whatsapp_number = $1 AND active = true`,
+    `SELECT * FROM hotels WHERE settings->>'evolution_instance' = $1 AND active = true`,
     [to]
   );
-  
+
   if (!hotels.length) {
-    console.error(`❌ No se encontró hotel para número ${to}`);
+    console.error(`❌ No se encontró hotel para instancia ${to}`);
     return;
   }
-  
+
   const hotel = hotels[0];
 
   // 3. Obtener o crear huésped
