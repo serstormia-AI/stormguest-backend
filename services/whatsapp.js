@@ -119,10 +119,11 @@ function parseIncomingMessage(body) {
 // ============================================================
 // ENVIAR MENSAJE
 // ============================================================
-async function sendMessage(to, text, token) {
+async function sendMessage(to, text, instanceName) {
     console.log(`\n===========================================`);
     console.log(`📤 OUTGOING MESSAGE TO: ${to}`);
     console.log(`📝 CONTENT: ${text}`);
+    console.log(`📱 INSTANCE: ${instanceName}`);
     console.log(`===========================================\n`);
 
     if (PROVIDER === 'mock') {
@@ -137,12 +138,14 @@ async function sendMessage(to, text, token) {
         try {
             const evolutionUrl = process.env.EVOLUTION_URL;
             const evolutionApiKey = process.env.EVOLUTION_API_KEY;
-            const instance = process.env.EVOLUTION_INSTANCE || token;
+            const instance = instanceName || process.env.EVOLUTION_INSTANCE;
 
             if (!evolutionUrl || !evolutionApiKey || !instance) {
-                console.error('❌ Evolution API: Faltan variables de entorno (EVOLUTION_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE)');
+                console.error('❌ Evolution API: Faltan variables (EVOLUTION_URL, EVOLUTION_API_KEY, instance)');
                 return { success: false, error: 'Missing Evolution env vars' };
             }
+
+            console.log(`🚀 Llamando: ${evolutionUrl}/message/sendText/${instance}`);
 
             await axios.post(
                 `${evolutionUrl}/message/sendText/${instance}`,
@@ -152,9 +155,10 @@ async function sendMessage(to, text, token) {
                     timeout: 10000
                 }
             );
+            console.log(`✅ Mensaje enviado exitosamente`);
             return { success: true };
         } catch (error) {
-            console.error('Error enviando mensaje via Evolution:', error.response?.data || error.message);
+            console.error('❌ Error enviando mensaje via Evolution:', error.response?.data || error.message);
             return { success: false, error: error.message };
         }
     }
