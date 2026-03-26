@@ -111,7 +111,7 @@ async function processIncomingMessage(parsed) {
 
   // 10. Guardar respuesta de la IA
   await pool.query(
-    `INSERT INTO messages (conversation_id, role, content, tokens_used)
+    `INSERT INTO messages (conversation_id, role, content)
      VALUES ($1, 'assistant', $2, $3)`,
     [conversation.id, aiResponse.text, aiResponse.tokensUsed]
   );
