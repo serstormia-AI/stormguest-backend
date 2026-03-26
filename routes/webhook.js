@@ -146,8 +146,8 @@ async function getOrCreateGuest(hotelId, phone, name) {
   
   // Crear nuevo
   const { rows: created } = await pool.query(
-    `INSERT INTO guests (hotel_id, phone, name, language)
-     VALUES ($1, $2, $3, 'es')
+    `INSERT INTO guests (hotel_id, phone, name)
+     VALUES ($1, $2, $3)
      RETURNING *`,
     [hotelId, phone, name || null]
   );
