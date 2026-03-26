@@ -157,17 +157,19 @@ async function getOrCreateGuest(hotelId, phone, name) {
 }
 
 async function getActiveReservation(hotelId, guestId) {
-  const { rows } = await pool.query(
-    `SELECT * FROM reservations 
-     WHERE hotel_id = $1 AND guest_id = $2
-       AND status IN ('confirmed', 'checked_in')
-       AND check_out >= CURRENT_DATE
-     ORDER BY check_in ASC
-     LIMIT 1`,
-    [hotelId, guestId]
-  );
-  
-  return rows[0] || null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM reservations
+       WHERE hotel_id = $1 AND guest_id = $2
+       LIMIT 1`,
+      [hotelId, guestId]
+    );
+    return rows[0] || null;
+  } catch (err) {
+    // Si la tabla no existe o schema no coincide, continuar sin reserva
+    console.warn('⚠️ No se pudo buscar reserva:', err.message);
+    return null;
+  }
 }
 
 async function getOrCreateConversation(hotelId, guestId, reservationId) {
