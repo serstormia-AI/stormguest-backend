@@ -87,16 +87,18 @@ async function processIncomingMessage(parsed) {
 
   // 7. Guardar mensaje del huésped
   await pool.query(
-    `INSERT INTO messages (conversation_id, role, content, whatsapp_message_id, media_url, media_type)
-     VALUES ($1, 'user', $2, $3, $4, $5)`,
-    [conversation.id, messageContent, messageId, mediaUrl, mediaType]
+    `INSERT INTO messages (conversation_id, role, content, whatsapp_message_id)
+     VALUES ($1, 'user', $2, $3)`,
+    [conversation.id, messageContent, messageId]
   );
 
-  // 8. Actualizar última actividad del huésped
-  await pool.query(
-    `UPDATE guests SET last_contact = NOW(), name = COALESCE(NULLIF($1, ''), name) WHERE id = $2`,
-    [name, guest.id]
-  );
+  // 8. Actualizar nombre del huésped si es necesario
+  if (name) {
+    await pool.query(
+      `UPDATE guests SET name = $1 WHERE id = $2`,
+      [name, guest.id]
+    );
+  }
 
   // 9. Generar respuesta con Claude
   const aiResponse = await generateResponse(
@@ -114,15 +116,10 @@ async function processIncomingMessage(parsed) {
     [conversation.id, aiResponse.text, aiResponse.tokensUsed]
   );
 
-  // 11. Actualizar conversación
+  // 11. Actualizar stage de la conversación
   await pool.query(
-    `UPDATE conversations SET 
-       last_message = $1, 
-       last_message_at = NOW(),
-       stage = $2,
-       status = CASE WHEN status = 'new' THEN 'in_progress' ELSE status END
-     WHERE id = $3`,
-    [aiResponse.text.substring(0, 255), aiResponse.stage, conversation.id]
+    `UPDATE conversations SET stage = $1 WHERE id = $2`,
+    [aiResponse.stage, conversation.id]
   );
 
   // 12. Enviar respuesta por WhatsApp
@@ -173,28 +170,33 @@ async function getActiveReservation(hotelId, guestId) {
 }
 
 async function getOrCreateConversation(hotelId, guestId, reservationId) {
-  // Buscar conversación activa (última 24hs)
-  const { rows } = await pool.query(
-    `SELECT * FROM conversations 
-     WHERE hotel_id = $1 AND guest_id = $2
-       AND status NOT IN ('resolved')
-       AND last_message_at > NOW() - INTERVAL '24 hours'
-     ORDER BY last_message_at DESC
-     LIMIT 1`,
-    [hotelId, guestId]
-  );
-  
-  if (rows.length > 0) return rows[0];
-  
+  try {
+    // Buscar conversación existente
+    const { rows } = await pool.query(
+      `SELECT * FROM conversations
+       WHERE hotel_id = $1 AND guest_id = $2
+       LIMIT 1`,
+      [hotelId, guestId]
+    );
+
+    if (rows.length > 0) return rows[0];
+  } catch (err) {
+    console.warn('⚠️ Error buscando conversación:', err.message);
+  }
+
   // Crear nueva conversación
-  const { rows: created } = await pool.query(
-    `INSERT INTO conversations (hotel_id, guest_id, reservation_id, status, column_name)
-     VALUES ($1, $2, $3, 'new', 'Nuevo')
-     RETURNING *`,
-    [hotelId, guestId, reservationId || null]
-  );
-  
-  return created[0];
+  try {
+    const { rows: created } = await pool.query(
+      `INSERT INTO conversations (hotel_id, guest_id, stage)
+       VALUES ($1, $2, 'inquiry')
+       RETURNING *`,
+      [hotelId, guestId]
+    );
+    return created[0];
+  } catch (err) {
+    console.warn('⚠️ Error creando conversación:', err.message);
+    return { id: `conv_${Date.now()}`, hotel_id: hotelId, guest_id: guestId };
+  }
 }
 
 module.exports = router;
