@@ -14,7 +14,13 @@ async function createEvolutionInstance(instanceName, evolutionUrl, globalApiKey)
         const payload = {
             instanceName,
             qrcode: true,
-            integration: "WHATSAPP-BAILEYS"
+            integration: "WHATSAPP-BAILEYS",
+            webhook: {
+                enabled: true,
+                url: process.env.WEBHOOK_URL || "https://api.serstormia.cloud/webhook",
+                webhookByEvents: false,
+                events: ["MESSAGES_UPSERT"]
+            }
         };
 
         console.log(`\n[🚀 Evolution API - Creating Instance]`);
