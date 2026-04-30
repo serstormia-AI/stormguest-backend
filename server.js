@@ -50,14 +50,9 @@ async function start() {
     });
 
     try {
-        // Inicializar DB
-        console.log('⏳ Intentando conectar a la base de datos...');
-        await initDb();
-        console.log('✅ Conexión a base de datos establecida.');
-
-        // Inicializar Schedulers
-        const { startSchedulers } = require('./services/scheduler');
-        startSchedulers();
+        // Iniciar Listener de Supabase Realtime para el ChatBot
+        const { startChatBotListener } = require('./services/chatBot');
+        startChatBotListener();
 
     } catch (error) {
         console.error('❌ Error durante la inicialización de la DB:', error);
