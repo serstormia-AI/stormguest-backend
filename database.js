@@ -1,3 +1,8 @@
+// NOTE: Row Level Security (RLS) for all tables defined here is managed via
+// Supabase and must be applied separately. See: migrations/001_enable_rls.sql
+// The backend uses the service_role key (supabaseClient.js), which bypasses
+// RLS intentionally. RLS protects direct/client-side access to the database.
+
 const { Pool } = require('pg');
 require('dotenv').config();
 
@@ -122,6 +127,19 @@ async function initDb() {
         google_review_requested BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(reservation_id)
+      )
+    `);
+
+    // Create Users Table (for authentication — replaces hardcoded demo users)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        hotel_id VARCHAR(50),
+        name VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 

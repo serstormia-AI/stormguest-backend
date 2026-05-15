@@ -9,17 +9,23 @@ router.get('/', auth(), async (req, res) => {
         const hotelId = req.user.hotel_id;
         if (!hotelId && req.user.role !== 'super_admin') return res.status(400).json({ error: 'hotel_id no asociado al usuario' });
 
-        // Mock response for quick dev setup
-        const MOCK_GUESTS = [
-            { id: 1, name: "María González", phone: "+5491144445555", status: "checking_in", tags: ["vip", "early_checkin"], last_contact: "hace 5 min", unread: 2 },
-            { id: 2, name: "John Smith", phone: "+13054445555", status: "during_stay", tags: ["extranjero"], last_contact: "hace 2 horas", unread: 0 },
-            { id: 3, name: "Familia Rossi", phone: "+5493512223333", status: "checkout", tags: ["familia", "late_checkout"], last_contact: "hace 1 día", unread: 0 },
-        ];
+        const { rows } = await pool.query(
+            `SELECT g.*,
+                    c.status AS conversation_status,
+                    c.last_message_at,
+                    (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.role = 'user'
+                        AND m.created_at > COALESCE(c.last_message_at - INTERVAL '1 second', '1970-01-01')) AS unread
+             FROM guests g
+             LEFT JOIN conversations c ON c.guest_id = g.id AND c.hotel_id = g.hotel_id
+             WHERE g.hotel_id = $1
+             ORDER BY g.last_contact DESC`,
+            [hotelId]
+        );
 
-        res.json(MOCK_GUESTS);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Error interno' });
+        return res.json(rows);
+    } catch (err) {
+        console.error('[guests GET /] Error:', err.message);
+        return res.status(500).json({ error: 'Database error', detail: err.message });
     }
 });
 

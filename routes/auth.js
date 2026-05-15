@@ -8,36 +8,47 @@ const router = express.Router();
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
+    // Fix 4: Input validation
+    if (!email || typeof email !== 'string' || email.trim() === '') {
+        return res.status(400).json({ error: 'El campo email es requerido' });
+    }
+    if (!password || typeof password !== 'string' || password.trim() === '') {
+        return res.status(400).json({ error: 'El campo password es requerido' });
+    }
+
     try {
-        // For now, mock authentication response since we don't have users table fully populated
-        // We will hardcode the demo users here to simulate DB lookup
+        // Fix 1: Buscar usuario real en la base de datos
+        const { rows } = await pool.query(
+            'SELECT id, email, password_hash, role, hotel_id, name FROM users WHERE email = $1',
+            [email.trim().toLowerCase()]
+        );
 
-        const DEMO_USERS = {
-            "admin@serstorm.com": { role: "super_admin", hotel_id: "all", name: "Admin" },
-            "gerente@interamericano.com": { role: "hotel_manager", hotel_id: "h1", name: "Carlos" },
-            "recepcion@interamericano.com": { role: "reception", hotel_id: "h1", name: "Ana" }
-        };
-
-        const user = DEMO_USERS[email];
-        if (!user) {
+        if (rows.length === 0) {
             return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
         }
 
-        // Accept hardcoded passwords
-        if ((email === "admin@serstorm.com" && password === "storm2024") ||
-            (email === "gerente@interamericano.com" && password === "hotel2024") ||
-            (email === "recepcion@interamericano.com" && password === "recepcion2024")) {
+        const user = rows[0];
 
-            const token = jwt.sign(
-                { email, role: user.role, hotel_id: user.hotel_id, name: user.name },
-                process.env.JWT_SECRET || 'stormguest_secret_123',
-                { expiresIn: '24h' }
-            );
-
-            return res.json({ token, role: user.role, hotel_id: user.hotel_id, name: user.name });
+        const passwordMatch = await bcrypt.compare(password, user.password_hash);
+        if (!passwordMatch) {
+            return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
         }
 
-        res.status(401).json({ error: 'Contraseña incorrecta' });
+        // Fix 2: JWT_SECRET must exist (validated at startup, but guard here too)
+        const secret = process.env.JWT_SECRET;
+        if (!secret) {
+            console.error('FATAL: JWT_SECRET no está definido');
+            return res.status(500).json({ error: 'Error de configuración del servidor' });
+        }
+
+        const token = jwt.sign(
+            { email: user.email, role: user.role, hotel_id: user.hotel_id, name: user.name },
+            secret,
+            { expiresIn: '24h' }
+        );
+
+        // Same JSON shape as before to keep frontend compatibility
+        return res.json({ token, role: user.role, hotel_id: user.hotel_id, name: user.name });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno del servidor' });

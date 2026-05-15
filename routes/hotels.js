@@ -142,14 +142,12 @@ router.get('/:id', auth(['super_admin', 'hotel_manager']), async (req, res) => {
 
         const { rows } = await pool.query('SELECT * FROM hotels WHERE id = $1', [id]);
         if (rows.length === 0) {
-            // Return mock for development if id is h1
-            if (id === 'h1') return res.json({ id: "h1", name: "Hotel Interamericano", location: "Bariloche, Argentina", bot_name: "Julia", bot_active: true });
             return res.status(404).json({ error: 'Hotel no encontrado' });
         }
-        res.json(rows[0]);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Error interno' });
+        return res.json(rows[0]);
+    } catch (err) {
+        console.error('[hotels GET /:id] Error:', err.message);
+        return res.status(500).json({ error: 'Database error', detail: err.message });
     }
 });
 
@@ -165,7 +163,16 @@ router.post('/', auth(['super_admin']), async (req, res) => {
 
         console.log(`[1/5] Recibidos datos para hotel: ${name}`);
 
-        if (!name) return res.status(400).json({ error: 'El nombre del hotel es requerido' });
+        // Fix 4: Input validation
+        if (!name || typeof name !== 'string' || name.trim() === '') {
+            return res.status(400).json({ error: 'El campo name es requerido y debe ser texto' });
+        }
+        if (email !== undefined && email !== null && (typeof email !== 'string' || !email.includes('@'))) {
+            return res.status(400).json({ error: 'El campo email no tiene un formato válido' });
+        }
+        if (phone !== undefined && phone !== null && typeof phone !== 'string') {
+            return res.status(400).json({ error: 'El campo phone debe ser texto' });
+        }
 
         // Usar valores del request, o defaults de env vars si no vienen
         const evo_url = evolution_url || process.env.EVOLUTION_URL;

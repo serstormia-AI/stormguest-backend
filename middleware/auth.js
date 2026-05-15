@@ -15,7 +15,12 @@ const auth = (allowedRoles = []) => {
                 return res.status(401).json({ error: 'Acceso denegado: Token no proporcionado' });
             }
 
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'stormguest_secret_123');
+            const secret = process.env.JWT_SECRET;
+            if (!secret) {
+                console.error('FATAL: JWT_SECRET no está definido');
+                return res.status(500).json({ error: 'Error de configuración del servidor' });
+            }
+            const decoded = jwt.verify(token, secret);
             req.user = decoded;
 
             // Validación de Roles (si se especifican)
