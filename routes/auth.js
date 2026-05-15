@@ -1,14 +1,13 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { pool } = require('../database');
+const { supabase } = require('../services/supabaseClient');
 
 const router = express.Router();
 
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
-    // Fix 4: Input validation
     if (!email || typeof email !== 'string' || email.trim() === '') {
         return res.status(400).json({ error: 'El campo email es requerido' });
     }
@@ -17,15 +16,17 @@ router.post('/login', async (req, res) => {
     }
 
     try {
-        // Fix 1: Buscar usuario real en la base de datos
-        const { rows } = await pool.query(
-            'SELECT id, email, password_hash, role, hotel_id, name FROM users WHERE email = $1',
-            [email.trim().toLowerCase()]
-        );
+        const { data, error } = await supabase
+            .from('users')
+            .select('id, email, password_hash, role, hotel_id, name')
+            .eq('email', email.trim().toLowerCase())
+            .single();
 
-        if (rows.length === 0) {
+        if (error || !data) {
             return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
         }
+
+        const rows = [data];
 
         const user = rows[0];
 
