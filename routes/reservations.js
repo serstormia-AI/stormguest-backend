@@ -1,5 +1,5 @@
 const express = require('express');
-const { pool } = require('../database');
+const { supabase } = require('../services/supabaseClient');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -10,24 +10,22 @@ router.get('/', auth(), async (req, res) => {
         if (!hotelId && req.user.role !== 'super_admin') return res.status(400).json({ error: 'hotel_id no asociado al usuario' });
 
         const { status } = req.query;
-        const params = [hotelId];
-        let whereClause = 'WHERE r.hotel_id = $1';
+
+        let query = supabase
+            .from('reservations')
+            .select('*, guests(name, email, phone)')
+            .eq('hotel_id', hotelId)
+            .order('check_in', { ascending: false });
 
         if (status) {
-            params.push(status);
-            whereClause += ` AND r.status = $${params.length}`;
+            query = query.eq('status', status);
         }
 
-        const { rows } = await pool.query(
-            `SELECT r.*, g.name AS guest_name, g.phone AS guest_phone, g.tags AS guest_tags
-             FROM reservations r
-             JOIN guests g ON r.guest_id = g.id
-             ${whereClause}
-             ORDER BY r.check_in DESC`,
-            params
-        );
+        const { data, error } = await query;
 
-        return res.json(rows);
+        if (error) return res.status(500).json({ error: error.message });
+
+        return res.json(data);
     } catch (err) {
         console.error('[reservations GET /] Error:', err.message);
         return res.status(500).json({ error: 'Database error', detail: err.message });

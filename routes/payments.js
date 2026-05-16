@@ -1,6 +1,6 @@
 // Required env vars: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, FRONTEND_URL
 const express = require('express');
-const { pool } = require('../database');
+const { supabase } = require('../services/supabaseClient');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -22,25 +22,38 @@ router.post('/checkout', async (req, res) => {
     }
 
     try {
-        const { rows } = await pool.query(
-            'SELECT * FROM services WHERE id = $1 AND hotel_id = $2 AND active = true',
-            [service_id, hotel_id]
-        );
+        const { data: service, error: serviceError } = await supabase
+            .from('services')
+            .select('*')
+            .eq('id', service_id)
+            .eq('hotel_id', hotel_id)
+            .eq('active', true)
+            .single();
 
-        if (rows.length === 0) {
+        if (serviceError || !service) {
             return res.status(404).json({ error: 'Servicio no encontrado' });
         }
 
-        const service = rows[0];
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-        const { rows: orderRows } = await pool.query(
-            `INSERT INTO orders (hotel_id, guest_name, guest_email, service_id, service_name, amount, currency, status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'usd', 'pending') RETURNING id`,
-            [hotel_id, guest_name, guest_email, service_id, service.name, service.price]
-        );
+        const { data: order, error: orderError } = await supabase
+            .from('orders')
+            .insert({
+                hotel_id,
+                guest_name,
+                guest_email,
+                service_id,
+                service_name: service.name,
+                amount: service.price,
+                currency: 'usd',
+                status: 'pending'
+            })
+            .select('id')
+            .single();
 
-        const orderId = orderRows[0].id;
+        if (orderError) return res.status(500).json({ error: orderError.message });
+
+        const orderId = order.id;
 
         const session = await stripe.checkout.sessions.create({
             mode: 'payment',
@@ -60,10 +73,12 @@ router.post('/checkout', async (req, res) => {
             metadata: { service_id, hotel_id, order_id: orderId, guest_name },
         });
 
-        await pool.query(
-            'UPDATE orders SET stripe_session_id = $1 WHERE id = $2',
-            [session.id, orderId]
-        );
+        const { error: updateError } = await supabase
+            .from('orders')
+            .update({ stripe_session_id: session.id })
+            .eq('id', orderId);
+
+        if (updateError) console.error('[payments POST /checkout] Error guardando session_id:', updateError.message);
 
         return res.json({ url: session.url });
     } catch (err) {
@@ -95,14 +110,12 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
     if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
-        try {
-            await pool.query(
-                "UPDATE orders SET status = 'paid' WHERE stripe_session_id = $1",
-                [session.id]
-            );
-        } catch (err) {
-            console.error('[payments webhook] Error actualizando orden:', err.message);
-        }
+        const { error } = await supabase
+            .from('orders')
+            .update({ status: 'paid' })
+            .eq('stripe_session_id', session.id);
+
+        if (error) console.error('[payments webhook] Error actualizando orden:', error.message);
     }
 
     return res.sendStatus(200);
@@ -112,11 +125,16 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 router.get('/orders', auth(), async (req, res) => {
     try {
         const hotel_id = req.user.hotel_id;
-        const { rows } = await pool.query(
-            'SELECT * FROM orders WHERE hotel_id = $1 ORDER BY created_at DESC',
-            [hotel_id]
-        );
-        return res.json(rows);
+
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('hotel_id', hotel_id)
+            .order('created_at', { ascending: false });
+
+        if (error) return res.status(500).json({ error: error.message });
+
+        return res.json(data);
     } catch (err) {
         console.error('[payments GET /orders] Error:', err.message);
         return res.status(500).json({ error: 'Database error', detail: err.message });

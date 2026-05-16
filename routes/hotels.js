@@ -1,5 +1,5 @@
 const express = require('express');
-const { pool } = require('../database');
+const { supabase } = require('../services/supabaseClient');
 const auth = require('../middleware/auth');
 const { createEvolutionInstance } = require('../services/whatsapp');
 const crypto = require('crypto');
@@ -9,8 +9,13 @@ const router = express.Router();
 
 router.get('/', auth(['super_admin']), async (req, res) => {
     try {
-        const { rows } = await pool.query('SELECT * FROM hotels ORDER BY created_at DESC');
-        res.json(rows);
+        const { data, error } = await supabase
+            .from('hotels')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) return res.status(500).json({ error: error.message });
+        res.json(data);
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno' });
@@ -21,13 +26,16 @@ router.get('/', auth(['super_admin']), async (req, res) => {
 router.get('/:id/qr', async (req, res) => {
     try {
         const { id } = req.params;
-        const { rows } = await pool.query('SELECT name, settings FROM hotels WHERE id = $1', [id]);
+        const { data: hotel, error } = await supabase
+            .from('hotels')
+            .select('name, settings')
+            .eq('id', id)
+            .single();
 
-        if (rows.length === 0) {
+        if (error || !hotel) {
             return res.status(404).send('<h1>Hotel no encontrado</h1>');
         }
 
-        const hotel = rows[0];
         const settings = hotel.settings || {};
         const instance = settings.evolution_instance;
 
@@ -140,11 +148,16 @@ router.get('/:id', auth(['super_admin', 'hotel_manager']), async (req, res) => {
             return res.status(403).json({ error: 'Acceso denegado a este hotel' });
         }
 
-        const { rows } = await pool.query('SELECT * FROM hotels WHERE id = $1', [id]);
-        if (rows.length === 0) {
+        const { data: hotel, error } = await supabase
+            .from('hotels')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error || !hotel) {
             return res.status(404).json({ error: 'Hotel no encontrado' });
         }
-        return res.json(rows[0]);
+        return res.json(hotel);
     } catch (err) {
         console.error('[hotels GET /:id] Error:', err.message);
         return res.status(500).json({ error: 'Database error', detail: err.message });
@@ -153,7 +166,6 @@ router.get('/:id', auth(['super_admin', 'hotel_manager']), async (req, res) => {
 
 router.post('/', auth(['super_admin']), async (req, res) => {
     console.log('--- NUEVA PETICIÓN: CREACIÓN DE HOTEL ---');
-    let client;
     try {
         const {
             name, location, phone, email, whatsapp_number,
@@ -163,7 +175,7 @@ router.post('/', auth(['super_admin']), async (req, res) => {
 
         console.log(`[1/5] Recibidos datos para hotel: ${name}`);
 
-        // Fix 4: Input validation
+        // Input validation
         if (!name || typeof name !== 'string' || name.trim() === '') {
             return res.status(400).json({ error: 'El campo name es requerido y debe ser texto' });
         }
@@ -177,7 +189,6 @@ router.post('/', auth(['super_admin']), async (req, res) => {
         // Usar valores del request, o defaults de env vars si no vienen
         const evo_url = evolution_url || process.env.EVOLUTION_URL;
         const evo_key = evolution_apikey || process.env.EVOLUTION_API_KEY;
-        // Por defecto, no auto-crear Evolution instance (puede ser conectado luego via API)
         const evo_provider = provider || 'mock';
 
         const settings = {
@@ -193,27 +204,25 @@ router.post('/', auth(['super_admin']), async (req, res) => {
 
         console.log(`[2/5] Generando ID: ${hotelId} e instancia: ${instanceName}`);
 
-        client = await pool.connect();
-        console.log(`[2.1/5] Conectado a base de datos`);
-
-        await client.query('BEGIN');
-        console.log(`[2.2/5] Transacción iniciada`);
-
-        await client.query(
-            `INSERT INTO hotels (id, name, location, phone, email, whatsapp_number, settings, active)
-             VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
-            [
-                hotelId,
+        // Insert hotel
+        const { error: insertError } = await supabase
+            .from('hotels')
+            .insert({
+                id: hotelId,
                 name,
-                location || null,
-                phone || null,
-                email || null,
-                whatsapp_number || req.body.whatsapp || null,
-                JSON.stringify(settings),
-                true
-            ]
-        );
-        console.log(`[3/5] Datos insertados en tabla 'hotels' (pendiente COMMIT)`);
+                location: location || null,
+                phone: phone || null,
+                email: email || null,
+                whatsapp_number: whatsapp_number || req.body.whatsapp || null,
+                settings,
+                active: true
+            });
+
+        if (insertError) {
+            console.error('Error insertando hotel:', insertError.message);
+            return res.status(500).json({ error: 'Error al crear el hotel', details: insertError.message });
+        }
+        console.log(`[3/5] Datos insertados en tabla 'hotels'`);
 
         let qrCode = null;
 
@@ -222,33 +231,33 @@ router.post('/', auth(['super_admin']), async (req, res) => {
             try {
                 // Crear instancia en Evolution API
                 const evoData = await createEvolutionInstance(instanceName, evo_url, evo_key);
-                qrCode = evoData.qrCodeBase64;  // ← Imagen QR para mostrar en frontend
+                qrCode = evoData.qrCodeBase64;
 
                 // Guardar datos de Evolution en settings
                 settings.evolution_instance = evoData.instanceName;
                 settings.evolution_instance_id = evoData.instanceId;
                 settings.evolution_hash = evoData.hash;
                 settings.evolution_status = evoData.status;
-                settings.qr_code = evoData.qrCodeBase64;  // ← Guardar QR code en DB
+                settings.qr_code = evoData.qrCodeBase64;
                 settings.qr_code_text = evoData.qrCodeText;
 
-                await client.query('UPDATE hotels SET settings = $1::jsonb WHERE id = $2', [JSON.stringify(settings), hotelId]);
+                await supabase
+                    .from('hotels')
+                    .update({ settings })
+                    .eq('id', hotelId);
+
                 console.log(`[4.1/5] Instancia Evolution creada con éxito.`);
                 console.log(`        → QR Code generado para escanear`);
             } catch (err) {
                 console.error("[!] Error en Paso 4 (Evolution):", err.message);
-                console.error("[!] Stack trace:", err.stack);
-                // No revertimos el hotel, solo avisamos que no se pudo crear la instancia WhatsApp
                 console.warn("[⚠️] El hotel fue creado pero sin integración WhatsApp (se puede conectar luego)");
-                // El hotel se crea de todas formas, sin QR code por ahora
                 qrCode = null;
             }
         } else {
             console.log(`[4/5] Saltando Evolution (Modo ${evo_provider})`);
         }
 
-        await client.query('COMMIT');
-        console.log(`[5/5] Transacción completada con éxito. Enviando respuesta.`);
+        console.log(`[5/5] Hotel creado con éxito. Enviando respuesta.`);
 
         res.status(201).json({
             message: 'Hotel creado correctamente.',
@@ -257,14 +266,11 @@ router.post('/', auth(['super_admin']), async (req, res) => {
         });
 
     } catch (error) {
-        if (client) await client.query('ROLLBACK');
-        console.error('❌ ERROR FATAL AL CREAR HOTEL:', error);
-        res.status(500).json({ 
-            error: 'Error interno al crear el hotel', 
-            details: error.message 
+        console.error('ERROR FATAL AL CREAR HOTEL:', error);
+        res.status(500).json({
+            error: 'Error interno al crear el hotel',
+            details: error.message
         });
-    } finally {
-        if (client) client.release();
     }
 });
 
