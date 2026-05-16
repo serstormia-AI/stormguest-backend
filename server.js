@@ -22,6 +22,7 @@ const reservationsRoutes = require('./routes/reservations');
 const servicesRoutes = require('./routes/services');
 const reviewsRoutes = require('./routes/reviews');
 const paymentsRoutes = require('./routes/payments');
+const notificationsRoutes = require('./routes/notifications');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,6 +62,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/reservations', reservationsRoutes);
 app.use('/api/services', servicesRoutes);
 app.use('/api/reviews', reviewsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 app.use('/webhook', webhookRoutes);
 app.use('/api/webhook', webhookRoutes);
 
