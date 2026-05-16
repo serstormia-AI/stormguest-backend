@@ -20,6 +20,8 @@ const guestsRoutes = require('./routes/guests');
 const analyticsRoutes = require('./routes/analytics');
 const reservationsRoutes = require('./routes/reservations');
 const servicesRoutes = require('./routes/services');
+const reviewsRoutes = require('./routes/reviews');
+const paymentsRoutes = require('./routes/payments');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +47,10 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'apikey']
 }));
+
+// Payments webhook must be registered before express.json() to receive raw body
+app.use('/api/payments', paymentsRoutes);
+
 app.use(express.json());
 
 // Routes
@@ -54,7 +60,9 @@ app.use('/api/guests', guestsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/reservations', reservationsRoutes);
 app.use('/api/services', servicesRoutes);
+app.use('/api/reviews', reviewsRoutes);
 app.use('/webhook', webhookRoutes);
+app.use('/api/webhook', webhookRoutes);
 
 // Start Server
 async function start() {

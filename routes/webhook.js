@@ -1,201 +1,172 @@
-/**
- * Webhook Route
- * Punto de entrada de todos los mensajes de WhatsApp
- * Orquesta: recibir → procesar → IA → responder
- */
+// Required env vars:
+// EVOLUTION_API_KEY
+// EVOLUTION_API_URL
+// EVOLUTION_INSTANCE
+// SUPABASE_SERVICE_ROLE_KEY
+// ANTHROPIC_API_KEY
 
 const express = require('express');
 const router = express.Router();
-const { pool } = require('../database');
+const { supabase } = require('../services/supabaseClient');
 const { generateResponse } = require('../services/claudeAI');
-const { sendMessage, parseIncomingMessage, verifyWebhook, downloadMedia } = require('../services/whatsapp');
-const { transcribeAudio } = require('../services/claudeAI');
+const { sendWhatsAppMessage } = require('../services/evolutionAPI');
 
-// ============================================================
-// GET - Verificación del webhook (Meta)
-// ============================================================
-router.get('/', verifyWebhook);
+const FALLBACK_MESSAGE = 'Gracias por tu mensaje. Un miembro de nuestro equipo te responderá pronto.';
 
-// ============================================================
-// POST - Recibir mensajes entrantes
-// ============================================================
-router.post('/', async (req, res) => {
-  // Responder 200 inmediatamente (WhatsApp requiere respuesta rápida)
+let lastActivity = null;
+
+// GET /api/webhook/status
+router.get('/status', (req, res) => {
+  res.json({
+    active: true,
+    lastActivity,
+  });
+});
+
+// POST /api/webhook/evolution
+router.post('/evolution', async (req, res) => {
   res.status(200).send('OK');
-  
+
   try {
-    const parsed = parseIncomingMessage(req.body);
-    if (!parsed) return;
-    
-    console.log(`📩 Mensaje de ${parsed.from}: "${parsed.content}"`);
-    
-    await processIncomingMessage(parsed);
-  } catch (error) {
-    console.error('❌ Error procesando mensaje:', error);
+    const payload = req.body;
+    const remoteJid = payload?.data?.key?.remoteJid;
+    const messageText =
+      payload?.data?.message?.conversation ||
+      payload?.data?.message?.extendedTextMessage?.text;
+
+    if (!remoteJid || !messageText) {
+      console.error('webhook/evolution: payload sin remoteJid o mensaje de texto', JSON.stringify(payload));
+      return;
+    }
+
+    const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+
+    lastActivity = new Date().toISOString();
+    console.log(`webhook/evolution: mensaje entrante de ${phone}: "${messageText}"`);
+
+    await processIncoming(phone, messageText);
+  } catch (err) {
+    console.error('webhook/evolution: error no esperado:', err);
   }
 });
 
-// ============================================================
-// FUNCIÓN PRINCIPAL DE PROCESAMIENTO
-// ============================================================
+async function processIncoming(phone, messageText) {
+  const guest = await getOrCreateGuest(phone);
+  const conversation = await getOrCreateConversation(guest);
 
-async function processIncomingMessage(parsed) {
-  const { from, to, name, content, mediaUrl, mediaType, messageId } = parsed;
+  try {
+    const { error: insertGuestMsgError } = await supabase
+      .from('messages')
+      .insert({ conversation_id: conversation.id, sender: 'guest', content: messageText });
 
-  // 1. Verificar si ya procesamos este mensaje (deduplicación)
-  const { rows: existing } = await pool.query(
-    `SELECT id FROM messages WHERE whatsapp_message_id = $1`,
-    [messageId]
-  );
-  if (existing.length > 0) {
-    console.log(`⚠️ Mensaje duplicado ${messageId}, ignorando`);
-    return;
+    if (insertGuestMsgError) {
+      console.error('webhook/evolution: error guardando mensaje del guest:', insertGuestMsgError);
+    }
+  } catch (err) {
+    console.error('webhook/evolution: excepcion guardando mensaje del guest:', err);
   }
 
-  // 2. Encontrar el hotel por instancia Evolution (el 'to' es el instance name desde Evolution)
-  const { rows: hotels } = await pool.query(
-    `SELECT * FROM hotels WHERE settings->>'evolution_instance' = $1 AND active = true`,
-    [to]
-  );
-
-  if (!hotels.length) {
-    console.error(`❌ No se encontró hotel para instancia ${to}`);
-    return;
+  let botReply = FALLBACK_MESSAGE;
+  try {
+    const hotelContext = { name: 'el hotel', id: guest.hotel_id };
+    const aiResult = await generateResponse(
+      conversation.id,
+      messageText,
+      hotelContext,
+      guest,
+      null
+    );
+    botReply = typeof aiResult === 'string' ? aiResult : (aiResult.text || FALLBACK_MESSAGE);
+  } catch (err) {
+    console.error('webhook/evolution: claudeAI falló, usando fallback:', err);
   }
 
-  const hotel = hotels[0];
+  try {
+    const { error: insertBotMsgError } = await supabase
+      .from('messages')
+      .insert({ conversation_id: conversation.id, sender: 'bot', content: botReply });
 
-  // 3. Obtener o crear huésped
-  const guest = await getOrCreateGuest(hotel.id, from, name);
+    if (insertBotMsgError) {
+      console.error('webhook/evolution: error guardando respuesta del bot:', insertBotMsgError);
+    }
+  } catch (err) {
+    console.error('webhook/evolution: excepcion guardando respuesta del bot:', err);
+  }
 
-  // 4. Obtener reserva activa del huésped
-  const reservation = await getActiveReservation(hotel.id, guest.id);
+  try {
+    await sendWhatsAppMessage(phone, botReply);
+    console.log(`webhook/evolution: respuesta enviada a ${phone}`);
+  } catch (err) {
+    console.error('webhook/evolution: falló envío por Evolution API (respuesta ya guardada en DB):', err.message);
+  }
+}
 
-  // 5. Obtener o crear conversación activa
-  const conversation = await getOrCreateConversation(hotel.id, guest.id, reservation?.id);
+async function getOrCreateGuest(phone) {
+  try {
+    const { data: existing, error } = await supabase
+      .from('guests')
+      .select('*')
+      .eq('phone', phone)
+      .limit(1);
 
-  // 6. Procesar audio si es necesario
-  let messageContent = content;
-  if (mediaType === 'audio' && mediaUrl) {
-    console.log('🎤 Procesando audio...');
-    const audioBuffer = await downloadMedia(mediaUrl, hotel.whatsapp_token);
-    if (audioBuffer) {
-      messageContent = await transcribeAudio(audioBuffer);
-      console.log(`🎤 Transcripción: "${messageContent}"`);
+    if (error) throw error;
+    if (existing && existing.length > 0) return existing[0];
+  } catch (err) {
+    console.error('webhook/evolution: error buscando guest:', err);
+  }
+
+  const lastFour = phone.slice(-4);
+  try {
+    const { data: created, error } = await supabase
+      .from('guests')
+      .insert({ phone, name: `Huésped ${lastFour}`, hotel_id: null })
+      .select()
+      .single();
+
+    if (error) throw error;
+    console.log(`webhook/evolution: guest creado: ${phone}`);
+    return created;
+  } catch (err) {
+    console.error('webhook/evolution: error creando guest:', err);
+    return { id: null, phone, name: `Huésped ${lastFour}`, hotel_id: null };
+  }
+}
+
+async function getOrCreateConversation(guest) {
+  if (guest.id) {
+    try {
+      const { data: existing, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('guest_id', guest.id)
+        .eq('status', 'open')
+        .limit(1);
+
+      if (error) throw error;
+      if (existing && existing.length > 0) return existing[0];
+    } catch (err) {
+      console.error('webhook/evolution: error buscando conversación:', err);
     }
   }
 
-  // 7. Guardar mensaje del huésped
-  await pool.query(
-    `INSERT INTO messages (conversation_id, role, content, whatsapp_message_id)
-     VALUES ($1, 'user', $2, $3)`,
-    [conversation.id, messageContent, messageId]
-  );
-
-  // 8. Actualizar nombre del huésped si es necesario
-  if (name) {
-    await pool.query(
-      `UPDATE guests SET name = $1 WHERE id = $2`,
-      [name, guest.id]
-    );
-  }
-
-  // 9. Generar respuesta con Claude
-  const aiResponse = await generateResponse(
-    conversation.id,
-    messageContent,
-    hotel,
-    guest,
-    reservation
-  );
-
-  // 10. Guardar respuesta de la IA
-  await pool.query(
-    `INSERT INTO messages (conversation_id, role, content)
-     VALUES ($1, 'assistant', $2)`,
-    [conversation.id, aiResponse.text]
-  );
-
-  // 11. Actualizar stage de la conversación
-  await pool.query(
-    `UPDATE conversations SET stage = $1 WHERE id = $2`,
-    [aiResponse.stage, conversation.id]
-  );
-
-  // 12. Enviar respuesta por WhatsApp
-  await sendMessage(from, aiResponse.text, hotel.settings.evolution_instance);
-
-  console.log(`✅ Respuesta enviada a ${from} (stage: ${aiResponse.stage})`);
-}
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-async function getOrCreateGuest(hotelId, phone, name) {
-  // Intentar obtener existente
-  const { rows } = await pool.query(
-    `SELECT * FROM guests WHERE hotel_id = $1 AND phone = $2`,
-    [hotelId, phone]
-  );
-  
-  if (rows.length > 0) return rows[0];
-  
-  // Crear nuevo
-  const { rows: created } = await pool.query(
-    `INSERT INTO guests (hotel_id, phone, name)
-     VALUES ($1, $2, $3)
-     RETURNING *`,
-    [hotelId, phone, name || null]
-  );
-  
-  console.log(`👤 Nuevo huésped creado: ${phone}`);
-  return created[0];
-}
-
-async function getActiveReservation(hotelId, guestId) {
   try {
-    const { rows } = await pool.query(
-      `SELECT * FROM reservations
-       WHERE hotel_id = $1 AND guest_id = $2
-       LIMIT 1`,
-      [hotelId, guestId]
-    );
-    return rows[0] || null;
-  } catch (err) {
-    // Si la tabla no existe o schema no coincide, continuar sin reserva
-    console.warn('⚠️ No se pudo buscar reserva:', err.message);
-    return null;
-  }
-}
+    const { data: created, error } = await supabase
+      .from('conversations')
+      .insert({
+        hotel_id: guest.hotel_id,
+        guest_id: guest.id,
+        channel: 'whatsapp',
+        status: 'open',
+      })
+      .select()
+      .single();
 
-async function getOrCreateConversation(hotelId, guestId, reservationId) {
-  try {
-    // Buscar conversación existente
-    const { rows } = await pool.query(
-      `SELECT * FROM conversations
-       WHERE hotel_id = $1 AND guest_id = $2
-       LIMIT 1`,
-      [hotelId, guestId]
-    );
-
-    if (rows.length > 0) return rows[0];
+    if (error) throw error;
+    console.log(`webhook/evolution: conversación creada para guest ${guest.id}`);
+    return created;
   } catch (err) {
-    console.warn('⚠️ Error buscando conversación:', err.message);
-  }
-
-  // Crear nueva conversación
-  try {
-    const { rows: created } = await pool.query(
-      `INSERT INTO conversations (hotel_id, guest_id, stage)
-       VALUES ($1, $2, 'inquiry')
-       RETURNING *`,
-      [hotelId, guestId]
-    );
-    return created[0];
-  } catch (err) {
-    console.warn('⚠️ Error creando conversación:', err.message);
-    return { id: `conv_${Date.now()}`, hotel_id: hotelId, guest_id: guestId };
+    console.error('webhook/evolution: error creando conversación:', err);
+    return { id: null };
   }
 }
 
