@@ -120,6 +120,10 @@ async function start() {
         const { startIcalCron } = require('./services/icalSync');
         startIcalCron();
 
+        // Cron de API polling PMS (cada 15 min)
+        const { startPollingCron } = require('./services/apiPolling');
+        startPollingCron();
+
     } catch (error) {
         console.error('Error durante la inicialización de la DB:', error);
         if (error.stack) console.error(error.stack);

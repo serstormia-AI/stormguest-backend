@@ -6,6 +6,8 @@ const Papa = require('papaparse');
 const { supabase } = require('../services/supabaseClient');
 const { auth } = require('../middleware/auth');
 const { runAllIcalSyncs, syncIcalIntegration } = require('../services/icalSync');
+const { pollIntegration } = require('../services/apiPolling');
+const { encryptField } = require('../services/crypto');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -266,6 +268,69 @@ router.post('/webhook-config', auth(), async (req, res) => {
   }
 
   res.json({ ok: true, webhook_secret: secret });
+});
+
+// ── POST /api/integrations/polling — configurar API polling ──
+router.post('/polling', auth(), async (req, res) => {
+  const hotel_id = req.user.hotel_id;
+  const { provider, api_key, client_id, client_secret, property_id } = req.body;
+
+  if (!provider) return res.status(400).json({ error: 'provider requerido' });
+
+  // Encriptar credenciales sensibles
+  const config = { property_id: property_id || null };
+  if (api_key)     config.api_key_enc     = encryptField(api_key);
+  if (client_id)   config.client_id_enc   = encryptField(client_id);
+  if (client_secret) config.client_secret_enc = encryptField(client_secret);
+
+  const { data: existing } = await supabase
+    .from('hotel_integrations').select('id')
+    .eq('hotel_id', hotel_id).eq('type', 'api_polling').eq('provider', provider).maybeSingle();
+
+  if (existing) {
+    await supabase.from('hotel_integrations')
+      .update({ config, active: true, updated_at: new Date().toISOString() }).eq('id', existing.id);
+  } else {
+    await supabase.from('hotel_integrations')
+      .insert({ hotel_id, type: 'api_polling', provider, config, active: true });
+  }
+
+  res.json({ ok: true, message: `Polling ${provider} configurado` });
+});
+
+// ── POST /api/integrations/:id/poll — polling manual ─────────
+router.post('/:id/poll', auth(), async (req, res) => {
+  const hotel_id = req.user.hotel_id;
+  const { data: integration } = await supabase
+    .from('hotel_integrations').select('*')
+    .eq('id', req.params.id).eq('hotel_id', hotel_id).maybeSingle();
+
+  if (!integration) return res.status(404).json({ error: 'Integración no encontrada' });
+  if (integration.type !== 'api_polling') return res.status(400).json({ error: 'Solo para integraciones de tipo api_polling' });
+
+  try {
+    await pollIntegration(integration);
+    res.json({ ok: true, message: 'Polling completado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/integrations/:id/logs — historial de sync ───────
+router.get('/:id/logs', auth(), async (req, res) => {
+  const hotel_id = req.user.hotel_id;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+  const { data, error } = await supabase
+    .from('integration_sync_logs')
+    .select('*')
+    .eq('integration_id', req.params.id)
+    .eq('hotel_id', hotel_id)
+    .order('synced_at', { ascending: false })
+    .limit(limit);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
 });
 
 // ── DELETE /api/integrations/:id ──────────────────────────────
