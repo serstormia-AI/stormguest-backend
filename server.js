@@ -3,13 +3,15 @@ const express = require('express');
 const cors = require('cors');
 const { initDb } = require('./database');
 
-// Fix 5: Startup check — abort immediately if critical env vars are missing
-const REQUIRED_ENV_VARS = ['JWT_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
-const missingVars = REQUIRED_ENV_VARS.filter((v) => !process.env[v]);
-if (missingVars.length > 0) {
-    console.error(`ERROR FATAL: Las siguientes variables de entorno son requeridas y no están definidas:`);
-    missingVars.forEach((v) => console.error(`  - ${v}`));
-    process.exit(1);
+// Startup check — abort if critical env vars are missing (skip in test mode)
+if (process.env.NODE_ENV !== 'test') {
+    const REQUIRED_ENV_VARS = ['JWT_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+    const missingVars = REQUIRED_ENV_VARS.filter((v) => !process.env[v]);
+    if (missingVars.length > 0) {
+        console.error('ERROR FATAL: Variables de entorno requeridas no definidas:');
+        missingVars.forEach((v) => console.error(`  - ${v}`));
+        process.exit(1);
+    }
 }
 
 // Import routes

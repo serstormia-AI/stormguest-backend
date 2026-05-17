@@ -1,19 +1,12 @@
-# Base image
-FROM node:20-slim
+FROM node:20-alpine
 
-# Create app directory
 WORKDIR /app
 
-# Install app dependencies
 COPY package*.json ./
+RUN npm ci --omit=dev
 
-RUN npm install --production
-
-# Bundle app source
 COPY . .
 
-# Expose the port
 EXPOSE 3000
 
-# Run the application
-CMD [ "node", "server.js" ]
+CMD ["node", "server.js"]
