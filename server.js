@@ -24,8 +24,26 @@ const reviewsRoutes = require('./routes/reviews');
 const paymentsRoutes = require('./routes/payments');
 const notificationsRoutes = require('./routes/notifications');
 
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Security: HTTP headers
+app.use(helmet());
+
+// Security: Rate limiters
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    message: { error: 'Demasiadas solicitudes' }
+});
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: 'Demasiados intentos de login' }
+});
 
 // Fix 3: CORS restringido — leer orígenes desde variable de entorno
 function buildCorsOrigins() {
@@ -49,11 +67,16 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'apikey']
 }));
 
+// Security: Apply rate limiters (before routes)
+app.use('/api/', generalLimiter);
+app.use('/api/auth', authLimiter);
+
 // Payments webhook must be registered before express.json() to receive raw body
 app.use('/api/payments', paymentsRoutes);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+// Security: Limit request body size to 1 MB
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -64,6 +87,7 @@ app.use('/api/reservations', reservationsRoutes);
 app.use('/api/services', servicesRoutes);
 app.use('/api/reviews', reviewsRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/settings', require('./routes/settings'));
 app.use('/webhook', webhookRoutes);
 app.use('/api/webhook', webhookRoutes);
 

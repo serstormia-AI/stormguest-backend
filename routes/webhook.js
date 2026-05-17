@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const twilio = require('twilio');
 const { supabase } = require('../services/supabaseClient');
 const { generateResponse } = require('../services/claudeAI');
 const { sendWhatsAppMessage } = require('../services/twilioService');
@@ -14,6 +15,22 @@ router.get('/status', (req, res) => {
 
 // POST /api/webhook/twilio — recibe mensajes entrantes de WhatsApp via Twilio
 router.post('/twilio', async (req, res) => {
+  // Security: Validate Twilio signature in production to prevent spoofed requests
+  if (process.env.NODE_ENV === 'production') {
+    const twilioSignature = req.headers['x-twilio-signature'];
+    const url = process.env.TWILIO_WEBHOOK_URL || `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    const isValid = twilio.validateRequest(
+      process.env.TWILIO_AUTH_TOKEN,
+      twilioSignature,
+      url,
+      req.body
+    );
+    if (!isValid) {
+      console.warn('[twilio] Firma inválida — request rechazado');
+      return res.status(403).send('Forbidden');
+    }
+  }
+
   res.status(200).send(''); // Twilio requiere 200 inmediato
 
   try {

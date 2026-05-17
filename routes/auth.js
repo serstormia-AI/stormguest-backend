@@ -14,6 +14,10 @@ router.post('/login', async (req, res) => {
     if (!password || typeof password !== 'string' || password.trim() === '') {
         return res.status(400).json({ error: 'El campo password es requerido' });
     }
+    // Security: bcrypt truncates at 72 bytes — reject longer passwords to prevent DoS
+    if (password.length > 72) {
+        return res.status(400).json({ error: 'El password no puede superar los 72 caracteres' });
+    }
 
     try {
         const { data, error } = await supabase

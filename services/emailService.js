@@ -16,10 +16,10 @@ const nodemailer = require('nodemailer');
 
 // ── Transporter ───────────────────────────────────────────────────────────────
 
-let transporter = null;
+let globalTransporter = null;
 
-function getTransporter() {
-    if (transporter) return transporter;
+function getGlobalTransporter() {
+    if (globalTransporter) return globalTransporter;
 
     const { EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS } = process.env;
 
@@ -31,7 +31,7 @@ function getTransporter() {
         return null;
     }
 
-    transporter = nodemailer.createTransport({
+    globalTransporter = nodemailer.createTransport({
         host: EMAIL_HOST,
         port: Number(EMAIL_PORT),
         secure: Number(EMAIL_PORT) === 465,
@@ -41,12 +41,47 @@ function getTransporter() {
         },
     });
 
-    return transporter;
+    return globalTransporter;
+}
+
+/**
+ * Retorna un transporter usando la config del hotel si está disponible,
+ * o el transporter global con env vars como fallback.
+ * @param {Object|null} hotelConfig — { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from }
+ */
+function getTransporter(hotelConfig) {
+    if (hotelConfig && hotelConfig.smtp_host && hotelConfig.smtp_user && hotelConfig.smtp_pass) {
+        return nodemailer.createTransport({
+            host: hotelConfig.smtp_host,
+            port: Number(hotelConfig.smtp_port) || 587,
+            secure: Number(hotelConfig.smtp_port) === 465,
+            auth: {
+                user: hotelConfig.smtp_user,
+                pass: hotelConfig.smtp_pass,
+            },
+        });
+    }
+    return getGlobalTransporter();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const FROM = () => process.env.EMAIL_FROM || process.env.EMAIL_USER || 'StormGuest <noreply@stormguest.com>';
+const FROM = (hotelConfig) => {
+    if (hotelConfig && hotelConfig.smtp_from) return hotelConfig.smtp_from;
+    return process.env.EMAIL_FROM || process.env.EMAIL_USER || 'StormGuest <noreply@stormguest.com>';
+};
+
+/**
+ * escapeHtml — sanitiza caracteres especiales para prevenir inyección HTML.
+ * Aplicar siempre a contenido ingresado por el usuario antes de insertarlo en templates HTML.
+ */
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 
 function baseTemplate(title, bodyHtml) {
     return `<!DOCTYPE html>
@@ -85,12 +120,12 @@ function baseTemplate(title, bodyHtml) {
 </html>`;
 }
 
-async function sendMail({ to, subject, html }) {
-    const t = getTransporter();
+async function sendMail({ to, subject, html }, hotelConfig = null) {
+    const t = getTransporter(hotelConfig);
     if (!t) return { sent: false, reason: 'not_configured' };
 
     try {
-        const info = await t.sendMail({ from: FROM(), to, subject, html });
+        const info = await t.sendMail({ from: FROM(hotelConfig), to, subject, html });
         console.log(`[emailService] Email enviado a ${to} — messageId: ${info.messageId}`);
         return { sent: true, messageId: info.messageId };
     } catch (err) {
@@ -103,9 +138,10 @@ async function sendMail({ to, subject, html }) {
 
 /**
  * sendWelcomeEmail — se llama al hacer check-in de un huésped.
- * @param {Object} guest  — { name, email }
+ * @param {Object} guest        — { name, email }
+ * @param {Object} hotelConfig  — opcional: { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from }
  */
-async function sendWelcomeEmail(guest) {
+async function sendWelcomeEmail(guest, hotelConfig = null) {
     const html = baseTemplate(
         'Bienvenido a tu estadía',
         `<h2>¡Bienvenido, ${guest.name}!</h2>
@@ -119,15 +155,16 @@ async function sendWelcomeEmail(guest) {
         to: guest.email,
         subject: '¡Bienvenido! Tu check-in fue confirmado — StormGuest',
         html,
-    });
+    }, hotelConfig);
 }
 
 /**
  * sendCheckoutEmail — se llama al hacer check-out.
  * @param {Object} guest        — { name, email }
  * @param {Object} reservation  — { check_in, check_out }
+ * @param {Object} hotelConfig  — opcional: { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from }
  */
-async function sendCheckoutEmail(guest, reservation) {
+async function sendCheckoutEmail(guest, reservation, hotelConfig = null) {
     const checkIn  = reservation.check_in  ? new Date(reservation.check_in).toLocaleDateString('es-ES')  : '—';
     const checkOut = reservation.check_out ? new Date(reservation.check_out).toLocaleDateString('es-ES') : '—';
 
@@ -146,14 +183,15 @@ async function sendCheckoutEmail(guest, reservation) {
         to: guest.email,
         subject: '¡Gracias por quedarte con nosotros! — StormGuest',
         html,
-    });
+    }, hotelConfig);
 }
 
 /**
  * sendOrderConfirmation — se llama al crear un pedido de room service / upsell.
- * @param {Object} order — { guest_name, guest_email, service_name, amount, id }
+ * @param {Object} order       — { guest_name, guest_email, service_name, amount, id }
+ * @param {Object} hotelConfig — opcional: { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from }
  */
-async function sendOrderConfirmation(order) {
+async function sendOrderConfirmation(order, hotelConfig = null) {
     const amount = order.amount != null ? `$${Number(order.amount).toFixed(2)}` : '—';
 
     const html = baseTemplate(
@@ -171,29 +209,36 @@ async function sendOrderConfirmation(order) {
         to: order.guest_email,
         subject: `Pedido confirmado: ${order.service_name} — StormGuest`,
         html,
-    });
+    }, hotelConfig);
 }
 
 /**
  * sendCustomEmail — email manual enviado desde el panel de Notificaciones.
- * @param {Object} params — { to, name, subject, message }
+ * @param {Object} params      — { to, name, subject, message }
+ * @param {Object} hotelConfig — opcional: { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from }
  */
-async function sendCustomEmail({ to, name, subject, message }) {
+async function sendCustomEmail({ to, name, subject, message }, hotelConfig = null) {
+    // Security: escape user-provided content to prevent HTML injection
+    const safeSubject = escapeHtml(subject);
+    const safeMessage = escapeHtml(message).replace(/\n/g, '<br />');
+    const safeName = name ? escapeHtml(name) : null;
+
     const html = baseTemplate(
-        subject,
-        `<h2>${subject}</h2>
-        ${name ? `<p>Hola <strong>${name}</strong>,</p>` : ''}
-        <p>${message.replace(/\n/g, '<br />')}</p>`
+        safeSubject,
+        `<h2>${safeSubject}</h2>
+        ${safeName ? `<p>Hola <strong>${safeName}</strong>,</p>` : ''}
+        <p>${safeMessage}</p>`
     );
 
-    return sendMail({ to, subject, html });
+    return sendMail({ to, subject, html }, hotelConfig);
 }
 
 /**
  * sendTestEmail — email de prueba al usuario del panel.
- * @param {string} to — email del usuario logueado
+ * @param {string} to          — email del usuario logueado
+ * @param {Object} hotelConfig — opcional: { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from }
  */
-async function sendTestEmail(to) {
+async function sendTestEmail(to, hotelConfig = null) {
     const html = baseTemplate(
         'Email de prueba — StormGuest',
         `<h2>¡Las notificaciones funcionan!</h2>
@@ -207,7 +252,7 @@ async function sendTestEmail(to) {
         to,
         subject: 'Email de prueba — StormGuest',
         html,
-    });
+    }, hotelConfig);
 }
 
 module.exports = {
