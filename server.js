@@ -23,6 +23,7 @@ const servicesRoutes = require('./routes/services');
 const reviewsRoutes = require('./routes/reviews');
 const paymentsRoutes = require('./routes/payments');
 const notificationsRoutes = require('./routes/notifications');
+const integrationsRoutes  = require('./routes/integrations');
 
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -87,8 +88,9 @@ app.use('/api/reservations', reservationsRoutes);
 app.use('/api/services', servicesRoutes);
 app.use('/api/reviews', reviewsRoutes);
 app.use('/api/notifications', notificationsRoutes);
-app.use('/api/settings', require('./routes/settings'));
-app.use('/api/admin', require('./routes/admin'));
+app.use('/api/settings',      require('./routes/settings'));
+app.use('/api/admin',         require('./routes/admin'));
+app.use('/api/integrations',  integrationsRoutes);
 app.use('/webhook', webhookRoutes);
 app.use('/api/webhook', webhookRoutes);
 
@@ -113,6 +115,10 @@ async function start() {
         // Iniciar Listener de Supabase Realtime para el ChatBot
         const { startChatBotListener } = require('./services/chatBot');
         startChatBotListener();
+
+        // Cron de sincronización iCal (cada hora)
+        const { startIcalCron } = require('./services/icalSync');
+        startIcalCron();
 
     } catch (error) {
         console.error('Error durante la inicialización de la DB:', error);
