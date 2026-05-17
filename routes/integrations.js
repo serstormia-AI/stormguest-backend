@@ -333,6 +333,31 @@ router.get('/:id/logs', auth(), async (req, res) => {
   res.json(data || []);
 });
 
+// ── GET /api/integrations/health — estado de todas las integraciones ─
+router.get('/health', auth(), async (req, res) => {
+  const hotel_id = req.user.hotel_id;
+  const { data: integrations } = await supabase
+    .from('hotel_integrations')
+    .select('id, type, provider, active, last_sync, last_error')
+    .eq('hotel_id', hotel_id);
+
+  const health = (integrations || []).map(i => {
+    let status = 'ok';
+    if (!i.active)       status = 'inactive';
+    else if (i.last_error) status = 'error';
+    else if (i.type === 'ical' && i.last_sync) {
+      const hoursSince = (Date.now() - new Date(i.last_sync)) / 36e5;
+      if (hoursSince > 2) status = 'stale';
+    } else if (i.type === 'api_polling' && i.last_sync) {
+      const minsSince = (Date.now() - new Date(i.last_sync)) / 60000;
+      if (minsSince > 30) status = 'stale';
+    }
+    return { ...i, status };
+  });
+
+  res.json(health);
+});
+
 // ── DELETE /api/integrations/:id ──────────────────────────────
 router.delete('/:id', auth(), async (req, res) => {
   const hotel_id = req.user.hotel_id;

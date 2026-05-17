@@ -124,6 +124,10 @@ async function start() {
         const { startPollingCron } = require('./services/apiPolling');
         startPollingCron();
 
+        // Cron de mantenimiento — purge sync logs > 90 días
+        const { startMaintenanceCron } = require('./services/maintenance');
+        startMaintenanceCron();
+
     } catch (error) {
         console.error('Error durante la inicialización de la DB:', error);
         if (error.stack) console.error(error.stack);
