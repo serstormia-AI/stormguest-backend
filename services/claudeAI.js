@@ -173,7 +173,10 @@ async function generateResponseChatBot(hotel, guest, newMessage, messagesHistory
     // Agregar el mensaje nuevo del huésped
     messages.push({ role: 'user', content: newMessage });
 
-    const systemPrompt = BASE_SYSTEM_PROMPT(hotel, guest);
+    // Usar system_prompt del hotel si está configurado, sino el base
+    const systemPrompt = (hotel.system_prompt && hotel.system_prompt.trim())
+      ? hotel.system_prompt
+      : BASE_SYSTEM_PROMPT(hotel, guest);
 
     // Llamar a Claude con prompt caching en el system prompt
     const response = await anthropic.messages.create({
@@ -240,7 +243,10 @@ async function generateResponseWebhook(conversationId, messageContent, hotel, gu
     // Agregar el mensaje actual
     messages.push({ role: 'user', content: messageContent });
 
-    const systemPrompt = WEBHOOK_SYSTEM_PROMPT(hotel, guest, reservation);
+    // Usar system_prompt del hotel si está configurado, sino el base webhook
+    const systemPrompt = (hotel.system_prompt && hotel.system_prompt.trim())
+      ? hotel.system_prompt
+      : WEBHOOK_SYSTEM_PROMPT(hotel, guest, reservation);
 
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',

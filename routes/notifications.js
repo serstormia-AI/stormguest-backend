@@ -29,12 +29,19 @@ router.post('/send', auth(), async (req, res) => {
             return res.status(200).json({ sent: false, reason: 'guest_has_no_email' });
         }
 
+        // Obtener config SMTP del hotel para usar su propio servidor si está configurado
+        const { data: hotel } = await supabase
+            .from('hotels')
+            .select('smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from')
+            .eq('id', req.user.hotel_id)
+            .single();
+
         const result = await emailService.sendCustomEmail({
             to: guest.email,
             name: guest.name,
             subject,
             message,
-        });
+        }, hotel || null);
 
         return res.status(200).json({
             sent: result.sent,
@@ -58,7 +65,14 @@ router.get('/test', auth(), async (req, res) => {
     }
 
     try {
-        const result = await emailService.sendTestEmail(to);
+        // Obtener config SMTP del hotel para el email de prueba
+        const { data: hotel } = await supabase
+            .from('hotels')
+            .select('smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from')
+            .eq('id', req.user.hotel_id)
+            .single();
+
+        const result = await emailService.sendTestEmail(to, hotel || null);
         return res.status(200).json({ sent: result.sent, reason: result.reason || null, to });
     } catch (err) {
         console.error('[notifications] Error en GET /test:', err);
