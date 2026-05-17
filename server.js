@@ -88,6 +88,7 @@ app.use('/api/services', servicesRoutes);
 app.use('/api/reviews', reviewsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/admin', require('./routes/admin'));
 app.use('/webhook', webhookRoutes);
 app.use('/api/webhook', webhookRoutes);
 
