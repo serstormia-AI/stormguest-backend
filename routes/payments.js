@@ -1,6 +1,7 @@
-// Required env vars: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, FRONTEND_URL
+// Required env vars: STRIPE_SECRET_KEY (fallback), STRIPE_WEBHOOK_SECRET (fallback), FRONTEND_URL
 const express = require('express');
 const { supabase } = require('../services/supabaseClient');
+const { decryptField } = require('../services/crypto');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -10,16 +11,55 @@ function getStripe() {
     return require('stripe')(process.env.STRIPE_SECRET_KEY);
 }
 
+/**
+ * Obtiene una instancia de Stripe usando la clave del hotel si está configurada,
+ * o hace fallback a la variable de entorno global.
+ * Devuelve { stripe, webhookSecret } o null si no hay clave disponible.
+ */
+async function getStripeForHotel(hotel_id) {
+    if (hotel_id) {
+        try {
+            const { data: hotel, error } = await supabase
+                .from('hotels')
+                .select('stripe_secret_key_enc, stripe_webhook_secret_enc')
+                .eq('id', hotel_id)
+                .single();
+
+            if (!error && hotel) {
+                const secretKey = decryptField(hotel.stripe_secret_key_enc);
+                if (secretKey) {
+                    const webhookSecret = decryptField(hotel.stripe_webhook_secret_enc)
+                        || process.env.STRIPE_WEBHOOK_SECRET;
+                    return {
+                        stripe: require('stripe')(secretKey),
+                        webhookSecret,
+                    };
+                }
+            }
+        } catch (err) {
+            console.error('[getStripeForHotel] Error fetching hotel Stripe config:', err.message);
+        }
+    }
+
+    // Fallback a env vars globales
+    if (!process.env.STRIPE_SECRET_KEY) return null;
+    return {
+        stripe: require('stripe')(process.env.STRIPE_SECRET_KEY),
+        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    };
+}
+
 // POST /api/payments/checkout
 router.post('/checkout', async (req, res) => {
-    const stripe = getStripe();
-    if (!stripe) return res.status(503).json({ error: 'Pagos no configurados' });
-
     const { service_id, guest_name, guest_email, hotel_id } = req.body;
 
     if (!service_id || !guest_name || !guest_email || !hotel_id) {
         return res.status(400).json({ error: 'Faltan campos requeridos' });
     }
+
+    const stripeConfig = await getStripeForHotel(hotel_id);
+    if (!stripeConfig) return res.status(503).json({ error: 'Pagos no configurados' });
+    const { stripe } = stripeConfig;
 
     try {
         const { data: service, error: serviceError } = await supabase
@@ -89,8 +129,11 @@ router.post('/checkout', async (req, res) => {
 
 // POST /api/payments/webhook — debe montarse ANTES de express.json()
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    const stripe = getStripe();
-    if (!stripe) return res.sendStatus(200);
+    // Para el webhook necesitamos identificar el hotel desde el payload sin parsear aún.
+    // Usamos fallback global; si el hotel tiene webhook secret propio, lo resolveremos
+    // después de parsear el evento con el secret global y leer hotel_id del metadata.
+    const globalStripe = getStripe();
+    if (!globalStripe) return res.sendStatus(200);
 
     const sig = req.headers['stripe-signature'];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -102,10 +145,45 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
     let event;
     try {
-        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+        event = globalStripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err) {
-        console.error('[payments webhook] Firma inválida:', err.message);
-        return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+        // Puede que el evento sea de un hotel con su propio webhook secret.
+        // Intentamos resolver con el hotel_id del metadata si está disponible en el body raw.
+        let parsed;
+        try { parsed = JSON.parse(req.body.toString()); } catch { /* noop */ }
+        const hotel_id = parsed?.data?.object?.metadata?.hotel_id;
+
+        if (hotel_id) {
+            try {
+                const { data: hotel } = await supabase
+                    .from('hotels')
+                    .select('stripe_webhook_secret_enc, stripe_secret_key_enc')
+                    .eq('id', hotel_id)
+                    .single();
+
+                const hotelWebhookSecret = decryptField(hotel?.stripe_webhook_secret_enc);
+                const hotelSecretKey = decryptField(hotel?.stripe_secret_key_enc);
+
+                if (hotelWebhookSecret && hotelSecretKey) {
+                    const hotelStripe = require('stripe')(hotelSecretKey);
+                    try {
+                        event = hotelStripe.webhooks.constructEvent(req.body, sig, hotelWebhookSecret);
+                    } catch (innerErr) {
+                        console.error('[payments webhook] Firma inválida (hotel):', innerErr.message);
+                        return res.status(400).json({ error: `Webhook Error: ${innerErr.message}` });
+                    }
+                } else {
+                    console.error('[payments webhook] Firma inválida (global):', err.message);
+                    return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+                }
+            } catch (lookupErr) {
+                console.error('[payments webhook] Error buscando hotel:', lookupErr.message);
+                return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+            }
+        } else {
+            console.error('[payments webhook] Firma inválida:', err.message);
+            return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+        }
     }
 
     if (event.type === 'checkout.session.completed') {
