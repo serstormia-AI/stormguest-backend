@@ -38,8 +38,8 @@
 -- no tenga permisos de superuser.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION app_hotel_id()
-RETURNS text AS $$
-  SELECT current_setting('app.hotel_id', true);
+RETURNS uuid AS $$
+  SELECT current_setting('app.hotel_id', true)::uuid;
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
 
