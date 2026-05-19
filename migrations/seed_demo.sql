@@ -44,11 +44,11 @@ ON CONFLICT DO NOTHING;
 -- RESERVAS ACTIVAS (checkout en el futuro para que pasen la validación)
 -- =============================================================================
 
-INSERT INTO reservations (id, hotel_id, guest_id, room_number, check_in, check_out, status, pms_id)
+INSERT INTO reservations (id, hotel_id, guest_id, room_number, check_in, check_out, status)
 VALUES
-    (v_res1_id, v_hotel_id, v_guest1_id, '101', CURRENT_DATE,       CURRENT_DATE + 5,  'checked_in',  'RES-001'),
-    (v_res2_id, v_hotel_id, v_guest2_id, '205', CURRENT_DATE - 1,   CURRENT_DATE + 3,  'checked_in',  'RES-002'),
-    (v_res3_id, v_hotel_id, v_guest3_id, '310', CURRENT_DATE + 1,   CURRENT_DATE + 7,  'confirmed',   'RES-003')
+    (v_res1_id, v_hotel_id, v_guest1_id, '101', CURRENT_DATE,       CURRENT_DATE + 5,  'checked_in'),
+    (v_res2_id, v_hotel_id, v_guest2_id, '205', CURRENT_DATE - 1,   CURRENT_DATE + 3,  'checked_in'),
+    (v_res3_id, v_hotel_id, v_guest3_id, '310', CURRENT_DATE + 1,   CURRENT_DATE + 7,  'confirmed')
 ON CONFLICT DO NOTHING;
 
 
