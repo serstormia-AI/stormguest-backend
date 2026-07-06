@@ -56,8 +56,8 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- CONVERSACIÓN inicial para Carlos
-INSERT INTO conversations (id, hotel_id, guest_id, reservation_id, channel, status)
-VALUES (gen_random_uuid(), v_hotel_id, v_guest1_id, v_res1_id, 'chat', 'open')
+INSERT INTO conversations (id, hotel_id, guest_id, channel, status)
+VALUES (gen_random_uuid(), v_hotel_id, v_guest1_id, 'chat', 'open')
 ON CONFLICT DO NOTHING;
 
 RAISE NOTICE 'Seed OK — credenciales de prueba:';
