@@ -151,11 +151,12 @@ ENCRYPTION_KEY                  # AES-256-GCM para credentials PMS — PENDIENTE
 
 Verificado del schema real (relevante para queries del backend):
 
-- `users.hotel_id` → **TEXT** (no uuid — es referencia a `hotels.id` pero guardada como texto)
+- `users.hotel_id` → **TEXT**
+- `guests.hotel_id` → **TEXT** (confirmado en migration 014)
 - `conversations.hotel_id` → **TEXT**
 - `reviews.hotel_id` → **TEXT**
 - `hotel_integrations.hotel_id` → **TEXT**
 - `integration_sync_logs.hotel_id` → **TEXT**
-- Resto de tablas (`guests`, `reservations`, `experiences`, `requests`, etc.) → `hotel_id` es **uuid**
+- Resto de tablas (`reservations`, `experiences`, `requests`, etc.) → `hotel_id` es **uuid**
 
 El backend usa service role así que no le afecta RLS, pero es importante para comparaciones correctas en queries.
