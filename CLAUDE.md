@@ -63,6 +63,8 @@ Verifica el JWT de Express en el header `Authorization: Bearer <token>`. Setea `
 | 011 | `011_conversations_rls.sql` | Policy `guests_read_own_conversations` para anon/guest |
 | 012 | `012_conversation_mode.sql` | Agrega columna `mode` (text, default 'bot') a conversations |
 | 013 | `013_rls_auth_uid.sql` | **RLS real** con `auth.uid()` — aplicada 2026-07-06 |
+| 014 | `014_rls_guest_policies.sql` | Políticas para sesiones de huéspedes: my_guest_id(), my_guest_hotel_id() RETURNS text; SELECT en experiences/requests/guests/reservations/reviews |
+| 015 | `015_staff_messages.sql` | Tabla `staff_messages` para comunicación interna staff; hotel_id uuid; policies select/insert por hotel |
 
 ### Migration 013 — RLS definitivo
 
