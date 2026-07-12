@@ -34,14 +34,20 @@ function decrypt(encryptedObj) {
   return decrypted.toString('utf8');
 }
 
-// Helpers para guardar/recuperar config con campos encriptados
+// Helpers para guardar/recuperar config con campos encriptados.
+// Distinguen entre "no había valor" (null) y "falló por key inválida" (relanza).
 function encryptField(value) {
   if (!value) return null;
-  try { return encrypt(value); } catch { return null; }
+  // getKey() lanza si ENCRYPTION_KEY falta o es inválida — error de config, debe propagarse
+  getKey();
+  return encrypt(value);
 }
 
 function decryptField(enc) {
   if (!enc) return null;
+  // getKey() lanza si ENCRYPTION_KEY falta o es inválida — error de config, debe propagarse
+  getKey();
+  // Datos corruptos o tamperizados retornan null — no es error de configuración
   try { return decrypt(enc); } catch { return null; }
 }
 

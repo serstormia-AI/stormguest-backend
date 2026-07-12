@@ -82,8 +82,41 @@ Variables **obligatorias** para que el servidor arranque:
 | `SUPABASE_URL` | URL del proyecto Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (acceso completo, solo en backend) |
 | `CORS_ORIGINS` | Orígenes permitidos separados por coma (requerido en `NODE_ENV=production`) |
+| `ENCRYPTION_KEY` | AES-256-GCM para credenciales PMS (ver sección siguiente) |
 
 El resto son opcionales según las funciones que uses: ver `.env.example` para descripción completa.
+
+---
+
+## ENCRYPTION_KEY — credenciales PMS cifradas
+
+Las API keys de PMS (Cloudbeds, Apaleo) y los webhook secrets se almacenan cifrados con AES-256-GCM en `hotel_integrations.config`. `ENCRYPTION_KEY` es la clave maestra.
+
+**Generar la clave:**
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Produce 64 caracteres hexadecimales (= 32 bytes). Guardá el valor en un lugar seguro — si se pierde, los datos cifrados no se pueden recuperar.
+
+**Configurar en Coolify (VPS):**
+
+1. Abrí Coolify → tu proyecto stormguest-backend
+2. Environment Variables → Add Variable
+3. Nombre: `ENCRYPTION_KEY` / Valor: el hex de 64 chars generado arriba
+4. Redeploy (Coolify hace auto-deploy desde push a `main` en GitHub)
+
+**Primera vez en producción (migración de datos):**
+
+Si ya existían integraciones de tipo `webhook` guardadas antes del deploy de Fase 2, sus `webhook_secret` están en texto plano. Correr el script de migración **una sola vez** después de configurar `ENCRYPTION_KEY` en Railway:
+
+```bash
+# En Railway: one-off command con las mismas variables del servidor
+node scripts/migrate-encrypt-webhook-secrets.js
+```
+
+El script es idempotente: detecta qué filas ya están cifradas y las omite.
 
 ---
 
@@ -219,11 +252,10 @@ Los archivos SQL en `/migrations/` se aplican manualmente en orden:
 
 ---
 
-## Deploy en Railway
+## Deploy en producción (VPS + Coolify)
 
-1. Crear nuevo proyecto en [railway.app](https://railway.app)
-2. Conectar el repositorio de GitHub
-3. Agregar las variables de entorno en **Settings → Variables**
-4. Railway detecta automáticamente Node.js y ejecuta `node server.js`
+El backend corre en un VPS gestionado con Coolify. Auto-deploya desde push a `main` en `github.com/serstormia-AI/stormguest-backend`.
 
-`PORT` no debe fijarse — Railway lo inyecta automáticamente.
+URL de producción: `https://api.serstormia.cloud`
+
+Las variables de entorno se configuran en Coolify → proyecto → Environment Variables.
