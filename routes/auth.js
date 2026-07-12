@@ -22,7 +22,7 @@ router.post('/login', async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('users')
-            .select('id, email, password_hash, role, hotel_id, name')
+            .select('id, email, password_hash, role, hotel_id, name, auth_user_id')
             .eq('email', email.trim().toLowerCase())
             .single();
 
@@ -37,6 +37,12 @@ router.post('/login', async (req, res) => {
         const passwordMatch = await bcrypt.compare(password, user.password_hash);
         if (!passwordMatch) {
             return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
+        }
+
+        // Sync password to Supabase Auth so the frontend can get a real Supabase session
+        // via signInWithPassword (needed for RLS auth.uid() to work with the anon client).
+        if (user.auth_user_id) {
+            supabase.auth.admin.updateUserById(user.auth_user_id, { password }).catch(() => {});
         }
 
         // Fix 2: JWT_SECRET must exist (validated at startup, but guard here too)
