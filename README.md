@@ -100,11 +100,12 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 Produce 64 caracteres hexadecimales (= 32 bytes). Guardá el valor en un lugar seguro — si se pierde, los datos cifrados no se pueden recuperar.
 
-**Configurar en Railway:**
+**Configurar en Coolify (VPS):**
 
-1. Abrí tu proyecto en [railway.app](https://railway.app)
-2. Settings → Variables → Add Variable
+1. Abrí Coolify → tu proyecto stormguest-backend
+2. Environment Variables → Add Variable
 3. Nombre: `ENCRYPTION_KEY` / Valor: el hex de 64 chars generado arriba
+4. Redeploy (Coolify hace auto-deploy desde push a `main` en GitHub)
 
 **Primera vez en producción (migración de datos):**
 
@@ -251,11 +252,10 @@ Los archivos SQL en `/migrations/` se aplican manualmente en orden:
 
 ---
 
-## Deploy en Railway
+## Deploy en producción (VPS + Coolify)
 
-1. Crear nuevo proyecto en [railway.app](https://railway.app)
-2. Conectar el repositorio de GitHub
-3. Agregar las variables de entorno en **Settings → Variables**
-4. Railway detecta automáticamente Node.js y ejecuta `node server.js`
+El backend corre en un VPS gestionado con Coolify. Auto-deploya desde push a `main` en `github.com/serstormia-AI/stormguest-backend`.
 
-`PORT` no debe fijarse — Railway lo inyecta automáticamente.
+URL de producción: `https://api.serstormia.cloud`
+
+Las variables de entorno se configuran en Coolify → proyecto → Environment Variables.

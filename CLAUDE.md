@@ -146,7 +146,7 @@ CORS_ORIGIN                     # URL del frontend (para CORS)
 ENCRYPTION_KEY                  # AES-256-GCM para credentials PMS — PENDIENTE configurar
 ```
 
-**Estado:** Fase 2 implementada (rama `feat/phase2-encrypt-pms-credentials`). `services/crypto.js` usa AES-256-GCM. Los campos encriptados en `hotel_integrations.config` son `api_key_enc`, `client_id_enc`, `client_secret_enc` (api_polling) y `webhook_secret` (webhook). `ENCRYPTION_KEY` debe configurarse en Railway antes del deploy — generar con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Si hay filas de tipo `webhook` pre-existentes, correr `scripts/migrate-encrypt-webhook-secrets.js` una sola vez tras configurar la key.
+**Estado:** Fase 2 implementada (rama `feat/phase2-encrypt-pms-credentials`). `services/crypto.js` usa AES-256-GCM. Los campos encriptados en `hotel_integrations.config` son `api_key_enc`, `client_id_enc`, `client_secret_enc` (api_polling) y `webhook_secret` (webhook). `ENCRYPTION_KEY` debe configurarse en **Coolify** (VPS) antes del deploy — generar con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Si hay filas de tipo `webhook` pre-existentes, correr `scripts/migrate-encrypt-webhook-secrets.js` una sola vez tras configurar la key.
 
 ---
 
