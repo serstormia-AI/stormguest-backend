@@ -9,7 +9,7 @@ const INVITABLE_ROLES = ['hotel_manager', 'reception', 'housekeeping', 'gastrono
 // POST /api/staff/invitations
 // Solo hotel_manager. Invita a un usuario nuevo al hotel propio vía Supabase Auth.
 // hotel_id viene del JWT — nunca del body.
-router.post('/', auth(['hotel_manager']), async (req, res) => {
+router.post('/invitations', auth(['hotel_manager']), async (req, res) => {
     const { email, role, name } = req.body;
     const { hotel_id, email: managerEmail } = req.user;
 
