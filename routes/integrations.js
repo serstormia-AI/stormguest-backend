@@ -255,7 +255,13 @@ router.post('/webhook-config', auth(), async (req, res) => {
   const { provider, webhook_secret } = req.body;
 
   const plainSecret = webhook_secret || crypto.randomBytes(24).toString('hex');
-  const encryptedSecret = encryptField(plainSecret);
+
+  let encryptedSecret;
+  try {
+    encryptedSecret = encryptField(plainSecret);
+  } catch {
+    return res.status(500).json({ error: 'Error al configurar la integración. Contactá al administrador.' });
+  }
 
   const { data: existing } = await supabase
     .from('hotel_integrations').select('id')
@@ -281,11 +287,15 @@ router.post('/polling', auth(), async (req, res) => {
 
   if (!provider) return res.status(400).json({ error: 'provider requerido' });
 
-  // Encriptar credenciales sensibles
-  const config = { property_id: property_id || null };
-  if (api_key)     config.api_key_enc     = encryptField(api_key);
-  if (client_id)   config.client_id_enc   = encryptField(client_id);
-  if (client_secret) config.client_secret_enc = encryptField(client_secret);
+  let config;
+  try {
+    config = { property_id: property_id || null };
+    if (api_key)       config.api_key_enc       = encryptField(api_key);
+    if (client_id)     config.client_id_enc     = encryptField(client_id);
+    if (client_secret) config.client_secret_enc = encryptField(client_secret);
+  } catch {
+    return res.status(500).json({ error: 'Error al configurar la integración. Contactá al administrador.' });
+  }
 
   const { data: existing } = await supabase
     .from('hotel_integrations').select('id')

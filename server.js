@@ -12,6 +12,14 @@ if (process.env.NODE_ENV !== 'test') {
         missingVars.forEach((v) => console.error(`  - ${v}`));
         process.exit(1);
     }
+
+    const encKey = process.env.ENCRYPTION_KEY;
+    if (!encKey || encKey.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(encKey)) {
+        console.error('ERROR FATAL: ENCRYPTION_KEY inválida o ausente.');
+        console.error('  Debe ser un hex de 64 caracteres (32 bytes).');
+        console.error('  Generar con: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+        process.exit(1);
+    }
 }
 
 // Import routes
