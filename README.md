@@ -82,8 +82,40 @@ Variables **obligatorias** para que el servidor arranque:
 | `SUPABASE_URL` | URL del proyecto Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (acceso completo, solo en backend) |
 | `CORS_ORIGINS` | Orígenes permitidos separados por coma (requerido en `NODE_ENV=production`) |
+| `ENCRYPTION_KEY` | AES-256-GCM para credenciales PMS (ver sección siguiente) |
 
 El resto son opcionales según las funciones que uses: ver `.env.example` para descripción completa.
+
+---
+
+## ENCRYPTION_KEY — credenciales PMS cifradas
+
+Las API keys de PMS (Cloudbeds, Apaleo) y los webhook secrets se almacenan cifrados con AES-256-GCM en `hotel_integrations.config`. `ENCRYPTION_KEY` es la clave maestra.
+
+**Generar la clave:**
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Produce 64 caracteres hexadecimales (= 32 bytes). Guardá el valor en un lugar seguro — si se pierde, los datos cifrados no se pueden recuperar.
+
+**Configurar en Railway:**
+
+1. Abrí tu proyecto en [railway.app](https://railway.app)
+2. Settings → Variables → Add Variable
+3. Nombre: `ENCRYPTION_KEY` / Valor: el hex de 64 chars generado arriba
+
+**Primera vez en producción (migración de datos):**
+
+Si ya existían integraciones de tipo `webhook` guardadas antes del deploy de Fase 2, sus `webhook_secret` están en texto plano. Correr el script de migración **una sola vez** después de configurar `ENCRYPTION_KEY` en Railway:
+
+```bash
+# En Railway: one-off command con las mismas variables del servidor
+node scripts/migrate-encrypt-webhook-secrets.js
+```
+
+El script es idempotente: detecta qué filas ya están cifradas y las omite.
 
 ---
 

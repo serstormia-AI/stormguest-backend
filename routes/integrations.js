@@ -7,7 +7,7 @@ const { supabase } = require('../services/supabaseClient');
 const auth = require('../middleware/auth');
 const { runAllIcalSyncs, syncIcalIntegration } = require('../services/icalSync');
 const { pollIntegration } = require('../services/apiPolling');
-const { encryptField } = require('../services/crypto');
+const { encryptField, decryptField } = require('../services/crypto');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -64,7 +64,7 @@ router.get('/', auth(), async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  // Ocultar secrets del config
+  // Ocultar secrets del config — webhook_secret puede ser objeto encriptado o string legacy
   const safe = (data || []).map(i => ({
     ...i,
     config: { ...i.config, webhook_secret: i.config.webhook_secret ? '••••••' : undefined },
@@ -225,7 +225,9 @@ router.post('/webhook/:hotel_slug',
       .maybeSingle();
     if (!integration) return;
 
-    const secret = integration.config?.webhook_secret;
+    // webhook_secret puede ser objeto encriptado (nuevo) o string plaintext (legacy pre-migración)
+    const rawSecret = integration.config?.webhook_secret;
+    const secret = typeof rawSecret === 'string' ? rawSecret : decryptField(rawSecret);
     const signature = req.headers['x-webhook-signature'] || req.headers['x-hub-signature-256'];
 
     if (secret && signature) {
@@ -252,7 +254,8 @@ router.post('/webhook-config', auth(), async (req, res) => {
   const hotel_id = req.user.hotel_id;
   const { provider, webhook_secret } = req.body;
 
-  const secret = webhook_secret || crypto.randomBytes(24).toString('hex');
+  const plainSecret = webhook_secret || crypto.randomBytes(24).toString('hex');
+  const encryptedSecret = encryptField(plainSecret);
 
   const { data: existing } = await supabase
     .from('hotel_integrations').select('id')
@@ -260,14 +263,15 @@ router.post('/webhook-config', auth(), async (req, res) => {
 
   if (existing) {
     await supabase.from('hotel_integrations')
-      .update({ provider, config: { webhook_secret: secret }, active: true, updated_at: new Date().toISOString() })
+      .update({ provider, config: { webhook_secret: encryptedSecret }, active: true, updated_at: new Date().toISOString() })
       .eq('id', existing.id);
   } else {
     await supabase.from('hotel_integrations')
-      .insert({ hotel_id, type: 'webhook', provider, config: { webhook_secret: secret }, active: true });
+      .insert({ hotel_id, type: 'webhook', provider, config: { webhook_secret: encryptedSecret }, active: true });
   }
 
-  res.json({ ok: true, webhook_secret: secret });
+  // Devolvemos el plaintext una sola vez — no se vuelve a exponer desde la BD
+  res.json({ ok: true, webhook_secret: plainSecret });
 });
 
 // ── POST /api/integrations/polling — configurar API polling ──

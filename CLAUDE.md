@@ -38,13 +38,13 @@ El backend siempre usa **service role** — bypassa RLS por diseño. La autoriza
 
 ## Auth — `routes/auth.js`
 
-Login endpoint para usuarios legacy (bcrypt). Firma JWT con `{ email, role, hotel_id, name }`.
+Login endpoint (bcrypt). Firma JWT con `{ email, role, hotel_id, name }`.
 
 ```
 POST /api/auth/login  →  { token, role, hotel_id, name }
 ```
 
-El frontend intenta Supabase Auth primero; solo cae aquí si el usuario no fue migrado aún. Tras login exitoso, el frontend llama `supabaseAdmin.auth.admin.createUser()` para migrarlo automáticamente.
+Tras validar bcrypt, hace fire-and-forget `supabase.auth.admin.updateUserById(auth_user_id, { password })` para sincronizar la contraseña en Supabase Auth. Esto permite que el frontend llame `signInWithPassword` exitosamente y obtenga una sesión real, necesaria para que `auth.uid()` funcione en las RLS policies (migrations 013 y 016).
 
 ### `middleware/auth.js`
 
@@ -65,6 +65,7 @@ Verifica el JWT de Express en el header `Authorization: Bearer <token>`. Setea `
 | 013 | `013_rls_auth_uid.sql` | **RLS real** con `auth.uid()` — aplicada 2026-07-06 |
 | 014 | `014_rls_guest_policies.sql` | Políticas para sesiones de huéspedes: my_guest_id(), my_guest_hotel_id() RETURNS text; SELECT en experiences/requests/guests/reservations/reviews |
 | 015 | `015_staff_messages.sql` | Tabla `staff_messages` para comunicación interna staff; hotel_id uuid; policies select/insert por hotel |
+| 016 | `016_rls_role_based.sql` | **RLS por rol** — aplicada 2026-07-12. Nuevas funciones `staff_role()` y `staff_has_role(min_role)`. Restricciones de escritura por rol en experiences, hotel_integrations, hotels, reviews, requests. Filtra requests SELECT por departamento (housekeeping/gastronomy). |
 
 ### Migration 013 — RLS definitivo
 
@@ -145,7 +146,7 @@ CORS_ORIGIN                     # URL del frontend (para CORS)
 ENCRYPTION_KEY                  # AES-256-GCM para credentials PMS — PENDIENTE configurar
 ```
 
-**Estado pendiente:** `ENCRYPTION_KEY` no está configurado en producción (ver `docs/status.md`). Las credenciales de PMS (API keys de Cloudbeds/Apaleo) se guardan sin encriptar hasta que se configure.
+**Estado:** Fase 2 implementada (rama `feat/phase2-encrypt-pms-credentials`). `services/crypto.js` usa AES-256-GCM. Los campos encriptados en `hotel_integrations.config` son `api_key_enc`, `client_id_enc`, `client_secret_enc` (api_polling) y `webhook_secret` (webhook). `ENCRYPTION_KEY` debe configurarse en Railway antes del deploy — generar con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Si hay filas de tipo `webhook` pre-existentes, correr `scripts/migrate-encrypt-webhook-secrets.js` una sola vez tras configurar la key.
 
 ---
 
