@@ -47,7 +47,7 @@ router.post('/invitations', auth(['hotel_manager']), async (req, res) => {
             normalizedEmail,
             {
                 data: { name: normalizedName, role, hotel_id },
-                redirectTo: `${frontendUrl}/login`,
+                redirectTo: `${frontendUrl}/reset-password`,
             }
         );
 
